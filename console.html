@@ -28,7 +28,7 @@
       <div class="flex items-center space-x-3">
         <span class="text-2xl">🎮</span>
         <div>
-          <h1 class="text-lg font-bold text-white leading-tight">數據分析遊戲主控台</h1>
+          <h1 class="text-lg font-bold text-white leading-tight flex items-center space-x-2"><span>數據分析遊戲主控台</span><span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v2.2-穩定版</span></h1>
           <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
         </div>
       </div>
@@ -165,8 +165,21 @@
       <!-- 右欄：出題主控盤與題目預覽 (7 欄) -->
       <div class="lg:col-span-7 space-y-4">
         
-        <!-- 當前選定題目預覽卡片 -->
+                <!-- 當前選定題目預覽卡片 -->
         <div v-if="previewQuestion" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl relative">
+          
+          <!-- 教師預覽狀態指示條 -->
+          <div class="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs flex items-center justify-between">
+            <span class="text-slate-400 flex items-center space-x-1.5">
+              <span>👁️</span>
+              <strong class="text-slate-200">後台選題預覽</strong>
+              <span class="text-slate-500">(僅主控台可見，尚未發送)</span>
+            </span>
+            <span class="font-mono text-[11px] px-2 py-0.5 rounded"
+                  :class="activeQuestion ? 'bg-blue-950 text-blue-300 border border-blue-800' : 'bg-slate-800 text-slate-400'">
+              大螢幕目前顯示：{{ activeQuestion ? activeQuestion.id + ' (' + currentStage + ')' : '大廳待機中' }}
+            </span>
+          </div>
           
           <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <div class="flex items-center space-x-2">
@@ -190,28 +203,28 @@
           <!-- 選項預覽 (教師端標註標準答案) -->
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
-                 :class="selectedQuestion.answer === 'A' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+                 :class="previewQuestion.answer === 'A' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">A</span>
               <span class="truncate">{{ previewQuestion.option_a }}</span>
-              <span v-if="selectedQuestion.answer === 'A'" class="ml-auto text-emerald-400 text-sm">✓</span>
+              <span v-if="previewQuestion.answer === 'A'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
-                 :class="selectedQuestion.answer === 'B' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+                 :class="previewQuestion.answer === 'B' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">B</span>
               <span class="truncate">{{ previewQuestion.option_b }}</span>
-              <span v-if="selectedQuestion.answer === 'B'" class="ml-auto text-emerald-400 text-sm">✓</span>
+              <span v-if="previewQuestion.answer === 'B'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
-                 :class="selectedQuestion.answer === 'C' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+                 :class="previewQuestion.answer === 'C' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-amber-600 text-white flex items-center justify-center font-bold text-[10px]">C</span>
               <span class="truncate">{{ previewQuestion.option_c }}</span>
-              <span v-if="selectedQuestion.answer === 'C'" class="ml-auto text-emerald-400 text-sm">✓</span>
+              <span v-if="previewQuestion.answer === 'C'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
-                 :class="selectedQuestion.answer === 'D' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+                 :class="previewQuestion.answer === 'D' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">D</span>
               <span class="truncate">{{ previewQuestion.option_d }}</span>
-              <span v-if="selectedQuestion.answer === 'D'" class="ml-auto text-emerald-400 text-sm">✓</span>
+              <span v-if="previewQuestion.answer === 'D'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
           </div>
 
@@ -512,6 +525,7 @@
         const resetToLobby = () => {
           if (timerInterval) clearInterval(timerInterval);
           currentStage.value = 'LOBBY';
+          activeQuestion.value = null;
           broadcastState();
         };
 
@@ -588,7 +602,7 @@
           allQuestions,
           filterModule,
           filterDifficulty,
-          selectedQuestion,
+          
           filteredQuestions,
           currentResponses,
           expectedResponsesCount,
