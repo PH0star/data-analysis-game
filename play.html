@@ -6,6 +6,7 @@
   <title>學員作答端 (Student Client)</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
   <script src="sync-channel.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -42,7 +43,7 @@
         </div>
         <div>
           <div class="text-sm font-bold text-white">{{ playerName || '尚未登入' }}</div>
-          <div class="text-[10px] text-slate-400 font-mono">房號：{{ roomId }}</div>
+          <div class="text-[10px] text-slate-400 font-mono flex items-center space-x-1"><span>房號：{{ roomId }}</span><span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '在線' : '連線中' }}</span></div>
         </div>
       </div>
       <div class="text-right">
@@ -212,6 +213,10 @@
         const doLogin = () => {
           playerName.value = isGroupMode.value ? selectedTeamName.value : (inputName.value.trim() || '學員 ' + playerId.value.slice(-3));
           isLoggedIn.value = true;
+          if (sync) {
+            sync.emit('player_join', { id: playerId.value, name: playerName.value });
+            sync.emit('request_sync', { playerId: playerId.value });
+          }
         };
 
         const chooseOption = (opt) => {
@@ -232,8 +237,17 @@
           });
         };
 
+        const isCloudOnline = ref(false);
+
         onMounted(() => {
           sync = new GameSync(roomId.value, 'player');
+
+          sync.on('cloud_status', (st) => {
+            isCloudOnline.value = st.online;
+            if (st.online) {
+              sync.emit('request_sync', { playerId: playerId.value });
+            }
+          });
 
           sync.on('state_change', (state) => {
             if (!state) return;
@@ -274,7 +288,8 @@
           selectTeam,
           doLogin,
           chooseOption,
-          hitBuzzer
+          hitBuzzer,
+          isCloudOnline
         };
       }
     }).mount('#app');

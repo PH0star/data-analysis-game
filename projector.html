@@ -6,6 +6,7 @@
   <title>數據分析大冒險 - 投影大畫面 (Projector)</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
   <script src="sync-channel.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -292,7 +293,7 @@
     <!-- 底部狀態列 (Footer) -->
     <footer class="flex items-center justify-between border-t border-slate-800 pt-2.5 text-xs text-slate-500">
       <div>
-        狀態：<span class="text-slate-300 font-medium">{{ stageDescription }}</span>
+        狀態：<span class="text-slate-300 font-medium mr-3">{{ stageDescription }}</span> <span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '雲端同步中' : '連線準備中...' }}</span>
       </div>
       <div class="flex items-center space-x-4 font-mono">
         <span>已作答：<strong class="text-cyan-400 text-sm">{{ responseCount }}</strong> / {{ totalExpectedCount }}</span>
@@ -325,6 +326,7 @@
         ]);
 
         // 版面自適應模式：'auto', '16-9', '4-3'
+        const isCloudOnline = ref(false);
         const userAspectSetting = ref('auto');
         const systemDetectedAspect = ref('16-9');
 
@@ -424,6 +426,13 @@
           window.addEventListener('resize', checkWindowRatio);
 
           sync = new GameSync(roomId.value, 'projector');
+
+          sync.on('cloud_status', (st) => {
+            isCloudOnline.value = st.online;
+            if (st.online) {
+              sync.emit('request_sync', { from: 'projector' });
+            }
+          });
           
           // 監聽狀態同步
           sync.on('state_change', (state) => {
@@ -474,7 +483,8 @@
           difficultyBadgeClass,
           questionTypeLabel,
           getOptionFeedbackClass,
-          sortedLeaderboard
+          sortedLeaderboard,
+          isCloudOnline
         };
       }
     }).mount('#app');

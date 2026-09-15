@@ -6,6 +6,7 @@
   <title>教師主控台 (Teacher Console) - 數據分析線上互動遊戲</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
   <script src="sync-channel.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -55,7 +56,7 @@
           <span>📱 開啟學生端測試</span>
         </a>
         <div class="px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
-          ● 連線中 ({{ connectedCount }}人)
+          <span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '雲端通訊正常' : '雲端連線中...' }} ({{ connectedCount }}人在線)</span>
         </div>
       </div>
     </header>
@@ -503,9 +504,28 @@
           link.click();
         };
 
+        const isCloudOnline = ref(false);
+        const playerRoster = ref({});
+
         onMounted(async () => {
           await loadQuestions();
           sync = new GameSync(roomId.value, 'host');
+
+          sync.on('cloud_status', (st) => {
+            isCloudOnline.value = st.online;
+          });
+
+          // 監聽新加入者索取狀態
+          sync.on('request_sync', () => {
+            broadcastState();
+          });
+
+          // 監聽學員登入
+          sync.on('player_join', (p) => {
+            playerRoster.value[p.id] = p.name;
+            connectedCount.value = Object.keys(playerRoster.value).length;
+            broadcastState();
+          });
 
           // 監聽學生端作答
           sync.on('submit_answer', (answerData) => {
@@ -522,6 +542,13 @@
               broadcastState();
             }
           });
+
+                    // 定期廣播狀態心跳，確保後進學員或手機螢幕喚醒時立即同步
+          setInterval(() => {
+            if (isCloudOnline.value) {
+              broadcastState();
+            }
+          }, 4000);
 
           broadcastState();
         });
@@ -543,6 +570,8 @@
           optionCounts,
           buzzerWinner,
           connectedCount,
+          isCloudOnline,
+          playerRoster,
           selectQuestion,
           pickRandomQuestion,
           setMode,
