@@ -191,6 +191,8 @@
         const currentPoints = ref(100);
         const buzzerWinner = ref('');
         const submittedOption = ref('');
+        const activeQuestionId = ref('');
+        const scoredQuestions = ref({});
 
         let sync;
 
@@ -251,23 +253,36 @@
 
           sync.on('state_change', (state) => {
             if (!state) return;
-            if (state.stage) {
-              // 新題目開始時重置作答選項
-              if (state.stage === 'QUESTION_ACTIVE' || state.stage === 'BUZZER_ALERT') {
-                submittedOption.value = '';
-              }
-              currentStage.value = state.stage;
-            }
-            if (state.mode) roomMode.value = state.mode;
+
+            // 1. 同步題目資訊：僅在題目 ID 真正改變時才重置作答選項！
             if (state.question) {
+              const newQId = state.question.id;
+              if (newQId !== activeQuestionId.value) {
+                activeQuestionId.value = newQId;
+                submittedOption.value = ''; // 核心修復：只有換新題目時才重置，絕不被定期心跳清空！
+              }
               currentAnswer.value = state.question.answer;
               currentPoints.value = state.question.score || 100;
             }
+
+            if (state.stage) {
+              currentStage.value = state.stage;
+            }
+
+            if (state.mode) roomMode.value = state.mode;
             if (state.buzzerWinner) buzzerWinner.value = state.buzzerWinner;
 
-            // 結算加分
-            if (state.stage === 'REVEAL' && submittedOption.value && submittedOption.value === currentAnswer.value) {
-              myScore.value += currentPoints.value;
+            // 2. 分數權威同步：直接同步教師端權威計算的分數，並設單次加分防呆
+            if (state.scores && playerName.value && state.scores[playerName.value] !== undefined) {
+              myScore.value = state.scores[playerName.value];
+            } else if (state.stage === 'REVEAL' && activeQuestionId.value) {
+              // 本地備援結算：每道題 ID 嚴格限加分一次，絕不重複累加！
+              if (!scoredQuestions.value[activeQuestionId.value]) {
+                if (submittedOption.value && submittedOption.value === currentAnswer.value) {
+                  myScore.value += currentPoints.value;
+                }
+                scoredQuestions.value[activeQuestionId.value] = true;
+              }
             }
           });
         });

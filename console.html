@@ -105,9 +105,9 @@
           <!-- 題庫清單列表 (可直接點擊挑選) -->
           <div class="max-h-60 overflow-y-auto space-y-1.5 pr-1 border border-slate-800 rounded-xl p-2 bg-slate-950/40">
             <div v-for="q in filteredQuestions" :key="q.id"
-                 @click="selectQuestion(q)"
+                 @click="selectPreviewQuestion(q)"
                  class="p-2 rounded-lg cursor-pointer text-xs border transition-all flex items-center justify-between"
-                 :class="selectedQuestion && selectedQuestion.id === q.id 
+                 :class="previewQuestion && previewQuestion.id === q.id 
                          ? 'bg-blue-600/30 border-blue-500 text-white font-medium' 
                          : 'bg-slate-800/40 border-slate-800/80 text-slate-300 hover:bg-slate-800'">
               <div class="truncate mr-2">
@@ -166,25 +166,25 @@
       <div class="lg:col-span-7 space-y-4">
         
         <!-- 當前選定題目預覽卡片 -->
-        <div v-if="selectedQuestion" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl relative">
+        <div v-if="previewQuestion" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl relative">
           
           <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <div class="flex items-center space-x-2">
               <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-cyan-950 text-cyan-400 border border-cyan-800">
-                #{{ selectedQuestion.id }}
+                #{{ previewQuestion.id }}
               </span>
-              <span class="text-xs text-slate-300 font-bold">{{ selectedQuestion.module }}</span>
+              <span class="text-xs text-slate-300 font-bold">{{ previewQuestion.module }}</span>
               <span class="text-xs text-slate-500">•</span>
-              <span class="text-xs text-slate-400">{{ selectedQuestion.subcategory }}</span>
+              <span class="text-xs text-slate-400">{{ previewQuestion.subcategory }}</span>
             </div>
             <div class="text-xs font-bold text-amber-400">
-              {{ selectedQuestion.score }} 分
+              {{ previewQuestion.score }} 分
             </div>
           </div>
 
           <!-- 題幹 -->
           <h3 class="text-base font-bold text-white leading-relaxed">
-            {{ selectedQuestion.question }}
+            {{ previewQuestion.question }}
           </h3>
 
           <!-- 選項預覽 (教師端標註標準答案) -->
@@ -192,25 +192,25 @@
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
                  :class="selectedQuestion.answer === 'A' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">A</span>
-              <span class="truncate">{{ selectedQuestion.option_a }}</span>
+              <span class="truncate">{{ previewQuestion.option_a }}</span>
               <span v-if="selectedQuestion.answer === 'A'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
                  :class="selectedQuestion.answer === 'B' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">B</span>
-              <span class="truncate">{{ selectedQuestion.option_b }}</span>
+              <span class="truncate">{{ previewQuestion.option_b }}</span>
               <span v-if="selectedQuestion.answer === 'B'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
                  :class="selectedQuestion.answer === 'C' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-amber-600 text-white flex items-center justify-center font-bold text-[10px]">C</span>
-              <span class="truncate">{{ selectedQuestion.option_c }}</span>
+              <span class="truncate">{{ previewQuestion.option_c }}</span>
               <span v-if="selectedQuestion.answer === 'C'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
             <div class="p-2.5 rounded-xl border flex items-center space-x-2"
                  :class="selectedQuestion.answer === 'D' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
               <span class="w-5 h-5 rounded bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">D</span>
-              <span class="truncate">{{ selectedQuestion.option_d }}</span>
+              <span class="truncate">{{ previewQuestion.option_d }}</span>
               <span v-if="selectedQuestion.answer === 'D'" class="ml-auto text-emerald-400 text-sm">✓</span>
             </div>
           </div>
@@ -218,7 +218,7 @@
           <!-- 教師獨享解析提示 -->
           <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-xs text-slate-400 leading-relaxed">
             <strong class="text-cyan-400">💡 教學要點提示：</strong>
-            {{ selectedQuestion.explanation }}
+            {{ previewQuestion.explanation }}
           </div>
         </div>
 
@@ -311,7 +311,10 @@
         const allQuestions = ref([]);
         const filterModule = ref('');
         const filterDifficulty = ref('');
-        const selectedQuestion = ref(null);
+        const previewQuestion = ref(null);
+        const activeQuestion = ref(null);
+        const hasAwardedPoints = ref(false);
+        const playerScores = ref({});
         const currentResponses = ref({});
         const buzzerWinner = ref('');
         const connectedCount = ref(6);
@@ -361,22 +364,22 @@
             const res = await fetch('questions.json');
             allQuestions.value = await res.json();
             if (allQuestions.value.length > 0) {
-              selectedQuestion.value = allQuestions.value[0];
+              previewQuestion.value = allQuestions.value[0];
             }
           } catch (e) {
             console.error('Failed to load questions.json', e);
           }
         };
 
-        const selectQuestion = (q) => {
-          selectedQuestion.value = q;
+        const selectPreviewQuestion = (q) => {
+          previewQuestion.value = q;
         };
 
         const pickRandomQuestion = () => {
           const pool = filteredQuestions.value;
           if (pool.length > 0) {
             const r = Math.floor(Math.random() * pool.length);
-            selectedQuestion.value = pool[r];
+            previewQuestion.value = pool[r];
           }
         };
 
@@ -406,16 +409,33 @@
             D: Math.round(((optionCounts.value.D || 0) / totalResp) * 100)
           };
 
+          // 計算即時排行榜 (支援個人模式與小組模式)
+          let dynamicLeaderboard = [];
+          if (roomMode.value === 'GROUP_REPRESENTATIVE') {
+            const defaultTeams = ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組'];
+            dynamicLeaderboard = defaultTeams.map(t => ({
+              name: t,
+              score: playerScores.value[t] || 0
+            }));
+          } else {
+            dynamicLeaderboard = Object.keys(playerScores.value).map(pName => ({
+              name: pName,
+              score: playerScores.value[pName] || 0
+            }));
+          }
+          dynamicLeaderboard.sort((a, b) => b.score - a.score);
+
           const statePayload = {
             stage: currentStage.value,
             mode: roomMode.value,
-            question: selectedQuestion.value,
+            question: activeQuestion.value, // 核心修復：僅廣播真正出題的題目，不廣播教師預覽題
             timeLeft: timeLeft.value,
             connectedCount: connectedCount.value,
             responseCount: Object.keys(currentResponses.value).length,
             stats: stats,
             buzzerWinner: buzzerWinner.value,
-            leaderboard: leaderboard.value
+            leaderboard: dynamicLeaderboard,
+            scores: playerScores.value
           };
 
           sync.emit('state_change', statePayload);
@@ -439,11 +459,14 @@
 
         // 出題
         const dispatchQuestion = () => {
-          if (!selectedQuestion.value) return;
+          if (!previewQuestion.value) return;
+          // 核心修復：點擊發送後才將選中的題目同步至投影大螢幕與學生端
+          activeQuestion.value = JSON.parse(JSON.stringify(previewQuestion.value));
           currentResponses.value = {};
           buzzerWinner.value = '';
+          hasAwardedPoints.value = false;
 
-          if (selectedQuestion.value.question_type === 'speed_buzzer') {
+          if (activeQuestion.value.question_type === 'speed_buzzer') {
             currentStage.value = 'BUZZER_ALERT';
             broadcastState();
           } else {
@@ -463,16 +486,19 @@
         // 揭曉答案
         const revealAnswer = () => {
           currentStage.value = 'REVEAL';
-          // 計算積分更新
-          if (selectedQuestion.value) {
-            const correctAns = selectedQuestion.value.answer;
-            const pts = selectedQuestion.value.score || 100;
+          if (timerInterval) clearInterval(timerInterval);
+
+          // 核心修復：每道題只結算加分一次，嚴格防呆
+          if (activeQuestion.value && !hasAwardedPoints.value) {
+            const correctAns = activeQuestion.value.answer;
+            const pts = activeQuestion.value.score || 100;
             Object.values(currentResponses.value).forEach(r => {
               if (r.option === correctAns) {
-                const target = leaderboard.value.find(p => p.name === r.playerName);
-                if (target) target.score += pts;
+                const pName = r.playerName;
+                playerScores.value[pName] = (playerScores.value[pName] || 0) + pts;
               }
             });
+            hasAwardedPoints.value = true;
           }
           broadcastState();
         };
@@ -491,7 +517,7 @@
 
         const exportResultsToCSV = () => {
           let csv = 'Timestamp,Question_ID,Module,Player_or_Team,Selected_Option,Is_Correct,Score\n';
-          const q = selectedQuestion.value;
+          const q = previewQuestion.value;
           Object.values(currentResponses.value).forEach(r => {
             const isCorrect = q && r.option === q.answer ? 'YES' : 'NO';
             const score = isCorrect === 'YES' ? (q.score || 100) : 0;
@@ -572,7 +598,10 @@
           connectedCount,
           isCloudOnline,
           playerRoster,
-          selectQuestion,
+          selectPreviewQuestion,
+          previewQuestion,
+          activeQuestion,
+          playerScores,
           pickRandomQuestion,
           setMode,
           setDuration,
