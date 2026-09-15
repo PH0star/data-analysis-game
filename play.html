@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>學員作答端 (Student Client)</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="sync-channel.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #0b0f19;
+      color: #f8fafc;
+      touch-action: manipulation;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* 觸控按鈕微反饋動畫 */
+    .tap-btn:active {
+      transform: scale(0.96);
+    }
+    .buzzer-circle {
+      animation: pulseBuzzer 1.2s infinite alternate;
+    }
+    @keyframes pulseBuzzer {
+      from { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.6); }
+      to { transform: scale(1.06); box-shadow: 0 0 50px rgba(239, 68, 68, 0.95); }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 max-w-md mx-auto">
+  <div id="app" class="flex-1 flex flex-col justify-between">
+
+    <!-- 頂部學員資訊卡 -->
+    <header class="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-full bg-cyan-600 flex items-center justify-center font-bold text-xs text-white">
+          {{ isGroupMode ? '組' : '生' }}
+        </div>
+        <div>
+          <div class="text-sm font-bold text-white">{{ playerName || '尚未登入' }}</div>
+          <div class="text-[10px] text-slate-400 font-mono">房號：{{ roomId }}</div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div class="text-[10px] text-slate-400">目前累計積分</div>
+        <div class="text-lg font-black font-mono text-amber-400">{{ myScore }} 分</div>
+      </div>
+    </header>
+
+    <!-- 主操作舞台區 -->
+    <main class="flex-1 flex flex-col justify-center my-4">
+
+      <!-- 階段 0: 登入畫面 -->
+      <div v-if="!isLoggedIn" class="space-y-5 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl">
+        <div class="text-center space-y-1">
+          <h2 class="text-xl font-black text-white">進入競賽教室</h2>
+          <p class="text-xs text-slate-400">
+            {{ isGroupMode ? '目前為【小組代表制】，請選擇您的所屬組別' : '目前為【個人競賽制】，請輸入暱稱或學號' }}
+          </p>
+        </div>
+
+        <!-- 小組代表模式快速選擇 (C 方案) -->
+        <div v-if="isGroupMode" class="space-y-2">
+          <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button v-for="g in ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組']" :key="g"
+                    @click="selectTeam(g)"
+                    class="p-3 rounded-xl border text-xs font-bold transition-all"
+                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
+              {{ g }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 個人模式輸入 -->
+        <div v-else class="space-y-2">
+          <label class="text-xs text-slate-400 block">學號或姓名暱稱：</label>
+          <input v-model="inputName" type="text" placeholder="例：A01 王大明"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <button @click="doLogin" 
+                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/20">
+          確認登入作答
+        </button>
+      </div>
+
+      <!-- 階段 1: 等待出題 (LOBBY / WAITING) -->
+      <div v-else-if="currentStage === 'LOBBY' || currentStage === 'STATS' || currentStage === 'LEADERBOARD'" 
+           class="text-center space-y-4 py-8">
+        <div class="text-4xl animate-bounce">👀</div>
+        <h3 class="text-lg font-bold text-white">請注視前方投影大螢幕</h3>
+        <p class="text-xs text-slate-400">教師正在進行講授或準備下一題...</p>
+        <div class="inline-block px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-[11px] text-cyan-400 font-mono">
+          即時連線就緒
+        </div>
+      </div>
+
+      <!-- 階段 2: 搶答題專屬按鈕 (BUZZER_ALERT) -->
+      <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center space-y-6 py-6">
+        <div class="text-xs font-bold text-amber-300 uppercase tracking-widest animate-pulse">
+          ⚡ 倒數中！準備搶答
+        </div>
+        <button @click="hitBuzzer"
+                class="buzzer-circle w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-black text-2xl shadow-2xl flex flex-col items-center justify-center border-4 border-red-400 tap-btn">
+          <span>搶！</span>
+          <span class="text-xs font-normal opacity-80 mt-1">BUZZER</span>
+        </button>
+      </div>
+
+      <!-- 階段 3: 答題進行中 (QUESTION_ACTIVE 或 搶答得標者) -->
+      <div v-else-if="canAnswer" class="space-y-4">
+        <div class="text-center">
+          <span class="text-xs text-cyan-400 font-mono font-bold">請依大螢幕題目選擇對應按鈕</span>
+          <div v-if="submittedOption" class="text-xs text-emerald-400 mt-1 font-bold">
+            ✓ 已送出選項：{{ submittedOption }}
+          </div>
+        </div>
+
+        <!-- 四色大按鈕 -->
+        <div class="grid grid-cols-2 gap-3 h-64">
+          <button @click="chooseOption('A')" 
+                  class="tap-btn rounded-2xl bg-gradient-to-br from-red-500 to-red-600 border-2 text-white font-black text-4xl flex items-center justify-center shadow-lg transition-all"
+                  :class="submittedOption === 'A' ? 'border-white scale-95 ring-4 ring-red-400' : 'border-red-400/50 opacity-90'">
+            A
+          </button>
+          <button @click="chooseOption('B')" 
+                  class="tap-btn rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 border-2 text-white font-black text-4xl flex items-center justify-center shadow-lg transition-all"
+                  :class="submittedOption === 'B' ? 'border-white scale-95 ring-4 ring-blue-400' : 'border-blue-400/50 opacity-90'">
+            B
+          </button>
+          <button @click="chooseOption('C')" 
+                  class="tap-btn rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 border-2 text-white font-black text-4xl flex items-center justify-center shadow-lg transition-all"
+                  :class="submittedOption === 'C' ? 'border-white scale-95 ring-4 ring-amber-400' : 'border-amber-400/50 opacity-90'">
+            C
+          </button>
+          <button @click="chooseOption('D')" 
+                  class="tap-btn rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-2 text-white font-black text-4xl flex items-center justify-center shadow-lg transition-all"
+                  :class="submittedOption === 'D' ? 'border-white scale-95 ring-4 ring-emerald-400' : 'border-emerald-400/50 opacity-90'">
+            D
+          </button>
+        </div>
+      </div>
+
+      <!-- 階段 4: 答案揭曉反饋 (REVEAL) -->
+      <div v-else-if="currentStage === 'REVEAL'" class="text-center space-y-4 py-8">
+        <div class="text-5xl">
+          {{ isMyAnswerCorrect ? '🎉' : '💡' }}
+        </div>
+        <h3 class="text-2xl font-black" :class="isMyAnswerCorrect ? 'text-emerald-400' : 'text-slate-200'">
+          {{ isMyAnswerCorrect ? '回答正確！' : '這次選錯囉！' }}
+        </h3>
+        <p class="text-xs text-slate-400">
+          標準答案為：<strong class="text-amber-400 text-sm font-mono">{{ currentAnswer }}</strong>
+        </p>
+        <p class="text-xs text-slate-300 bg-slate-900 border border-slate-800 p-3 rounded-xl leading-relaxed">
+          請抬頭觀看大螢幕的詳細觀念解析！
+        </p>
+      </div>
+
+    </main>
+
+    <!-- 底部狀態列 -->
+    <footer class="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/80">
+      數據分析實戰線上遊戲 • 手機作答端
+    </footer>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const roomId = ref('DA-ROOM-888');
+        const isLoggedIn = ref(false);
+        const inputName = ref('');
+        const selectedTeamName = ref('第 1 組');
+        const playerName = ref('');
+        const playerId = ref('P_' + Math.random().toString(36).substring(2, 8));
+        const myScore = ref(0);
+
+        const roomMode = ref('GROUP_REPRESENTATIVE');
+        const currentStage = ref('LOBBY');
+        const currentAnswer = ref('');
+        const currentPoints = ref(100);
+        const buzzerWinner = ref('');
+        const submittedOption = ref('');
+
+        let sync;
+
+        const isGroupMode = computed(() => roomMode.value === 'GROUP_REPRESENTATIVE');
+
+        const canAnswer = computed(() => {
+          if (currentStage.value === 'QUESTION_ACTIVE') return true;
+          if (currentStage.value === 'BUZZER_WINNER' && buzzerWinner.value === playerName.value) return true;
+          return false;
+        });
+
+        const isMyAnswerCorrect = computed(() => {
+          return submittedOption.value && submittedOption.value === currentAnswer.value;
+        });
+
+        const selectTeam = (team) => {
+          selectedTeamName.value = team;
+        };
+
+        const doLogin = () => {
+          playerName.value = isGroupMode.value ? selectedTeamName.value : (inputName.value.trim() || '學員 ' + playerId.value.slice(-3));
+          isLoggedIn.value = true;
+        };
+
+        const chooseOption = (opt) => {
+          submittedOption.value = opt;
+          sync.emit('submit_answer', {
+            playerId: playerId.value,
+            playerName: playerName.value,
+            option: opt,
+            time: Date.now()
+          });
+        };
+
+        const hitBuzzer = () => {
+          sync.emit('buzzer_hit', {
+            playerId: playerId.value,
+            playerName: playerName.value,
+            time: Date.now()
+          });
+        };
+
+        onMounted(() => {
+          sync = new GameSync(roomId.value, 'player');
+
+          sync.on('state_change', (state) => {
+            if (!state) return;
+            if (state.stage) {
+              // 新題目開始時重置作答選項
+              if (state.stage === 'QUESTION_ACTIVE' || state.stage === 'BUZZER_ALERT') {
+                submittedOption.value = '';
+              }
+              currentStage.value = state.stage;
+            }
+            if (state.mode) roomMode.value = state.mode;
+            if (state.question) {
+              currentAnswer.value = state.question.answer;
+              currentPoints.value = state.question.score || 100;
+            }
+            if (state.buzzerWinner) buzzerWinner.value = state.buzzerWinner;
+
+            // 結算加分
+            if (state.stage === 'REVEAL' && submittedOption.value && submittedOption.value === currentAnswer.value) {
+              myScore.value += currentPoints.value;
+            }
+          });
+        });
+
+        return {
+          roomId,
+          isLoggedIn,
+          inputName,
+          selectedTeamName,
+          playerName,
+          myScore,
+          isGroupMode,
+          currentStage,
+          currentAnswer,
+          submittedOption,
+          canAnswer,
+          isMyAnswerCorrect,
+          selectTeam,
+          doLogin,
+          chooseOption,
+          hitBuzzer
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

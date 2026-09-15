@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教師主控台 (Teacher Console) - 數據分析線上互動遊戲</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="sync-channel.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #0f172a;
+      color: #e2e8f0;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="p-4 lg:p-6 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto space-y-5">
+
+    <!-- 頂部控制列 -->
+    <header class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🎮</span>
+        <div>
+          <h1 class="text-lg font-bold text-white leading-tight">數據分析遊戲主控台</h1>
+          <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
+        </div>
+      </div>
+
+      <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
+      <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+        <button @click="setMode('INDIVIDUAL')" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+          👤 個人競賽制 (30人)
+        </button>
+        <button @click="setMode('GROUP_REPRESENTATIVE')" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+          👥 小組代表制 (6組長代表)
+        </button>
+      </div>
+
+      <!-- 快速連結與狀態 -->
+      <div class="flex items-center space-x-3 text-xs">
+        <a href="projector.html" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold flex items-center space-x-1">
+          <span>📺 開啟投影大螢幕</span>
+        </a>
+        <a href="play.html" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 font-bold flex items-center space-x-1">
+          <span>📱 開啟學生端測試</span>
+        </a>
+        <div class="px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
+          ● 連線中 ({{ connectedCount }}人)
+        </div>
+      </div>
+    </header>
+
+    <!-- 主體雙欄排版 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+      <!-- 左欄：題庫篩選與抽題區 (5 欄) -->
+      <div class="lg:col-span-5 space-y-4">
+        
+        <!-- 抽題工具卡片 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold text-slate-200 flex items-center space-x-2">
+              <span>🔍 題庫篩選與抽取</span>
+              <span class="text-xs font-normal text-slate-400">({{ filteredQuestions.length }} / {{ allQuestions.length }} 題)</span>
+            </h2>
+            <button @click="pickRandomQuestion" 
+                    class="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow flex items-center space-x-1">
+              <span>🎲 智慧隨機抽題</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1">模組分類</label>
+              <select v-model="filterModule" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200">
+                <option value="">全部模組 (4大模組)</option>
+                <option value="數據抓取">1. 數據抓取 (30題)</option>
+                <option value="資料清理">2. 資料清理 (30題)</option>
+                <option value="資料視覺化">3. 資料視覺化 (30題)</option>
+                <option value="分析流程">4. 分析流程 (30題)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-slate-400 block mb-1">難易度</label>
+              <select v-model="filterDifficulty" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-slate-200">
+                <option value="">全部難度</option>
+                <option value="初級">初級 (100分)</option>
+                <option value="中級">中級 (150分)</option>
+                <option value="挑戰">挑戰 (200分)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 題庫清單列表 (可直接點擊挑選) -->
+          <div class="max-h-60 overflow-y-auto space-y-1.5 pr-1 border border-slate-800 rounded-xl p-2 bg-slate-950/40">
+            <div v-for="q in filteredQuestions" :key="q.id"
+                 @click="selectQuestion(q)"
+                 class="p-2 rounded-lg cursor-pointer text-xs border transition-all flex items-center justify-between"
+                 :class="selectedQuestion && selectedQuestion.id === q.id 
+                         ? 'bg-blue-600/30 border-blue-500 text-white font-medium' 
+                         : 'bg-slate-800/40 border-slate-800/80 text-slate-300 hover:bg-slate-800'">
+              <div class="truncate mr-2">
+                <span class="font-mono text-cyan-400 mr-1.5 font-bold">[{{ q.id }}]</span>
+                <span>{{ q.question }}</span>
+              </div>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+                    :class="q.difficulty === '初級' ? 'bg-emerald-950 text-emerald-300' : q.difficulty === '中級' ? 'bg-amber-950 text-amber-300' : 'bg-purple-950 text-purple-300'">
+                {{ q.difficulty }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 即時作答統計監控 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold text-slate-200">📊 即時作答進度</h2>
+            <span class="font-mono text-sm font-bold text-cyan-400">
+              {{ Object.keys(currentResponses).length }} / {{ expectedResponsesCount }} 人已交卷
+            </span>
+          </div>
+
+          <!-- 作答進度條 -->
+          <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full transition-all duration-300"
+                 :style="{ width: responseProgressPercent + '%' }"></div>
+          </div>
+
+          <!-- 四個選項即時分佈 (教師預覽) -->
+          <div class="grid grid-cols-4 gap-2 pt-1 text-center font-mono text-xs">
+            <div class="p-2 rounded-lg bg-red-950/40 border border-red-900/50">
+              <span class="text-red-400 font-bold block">A: {{ optionCounts.A || 0 }}</span>
+            </div>
+            <div class="p-2 rounded-lg bg-blue-950/40 border border-blue-900/50">
+              <span class="text-blue-400 font-bold block">B: {{ optionCounts.B || 0 }}</span>
+            </div>
+            <div class="p-2 rounded-lg bg-amber-950/40 border border-amber-900/50">
+              <span class="text-amber-400 font-bold block">C: {{ optionCounts.C || 0 }}</span>
+            </div>
+            <div class="p-2 rounded-lg bg-emerald-950/40 border border-emerald-900/50">
+              <span class="text-emerald-400 font-bold block">D: {{ optionCounts.D || 0 }}</span>
+            </div>
+          </div>
+
+          <!-- 搶答者提醒 -->
+          <div v-if="buzzerWinner" class="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs flex items-center justify-between">
+            <span>⚡ 搶答成功首位：</span>
+            <strong class="font-bold text-white text-sm">{{ buzzerWinner }}</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 右欄：出題主控盤與題目預覽 (7 欄) -->
+      <div class="lg:col-span-7 space-y-4">
+        
+        <!-- 當前選定題目預覽卡片 -->
+        <div v-if="selectedQuestion" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl relative">
+          
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-cyan-950 text-cyan-400 border border-cyan-800">
+                #{{ selectedQuestion.id }}
+              </span>
+              <span class="text-xs text-slate-300 font-bold">{{ selectedQuestion.module }}</span>
+              <span class="text-xs text-slate-500">•</span>
+              <span class="text-xs text-slate-400">{{ selectedQuestion.subcategory }}</span>
+            </div>
+            <div class="text-xs font-bold text-amber-400">
+              {{ selectedQuestion.score }} 分
+            </div>
+          </div>
+
+          <!-- 題幹 -->
+          <h3 class="text-base font-bold text-white leading-relaxed">
+            {{ selectedQuestion.question }}
+          </h3>
+
+          <!-- 選項預覽 (教師端標註標準答案) -->
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="p-2.5 rounded-xl border flex items-center space-x-2"
+                 :class="selectedQuestion.answer === 'A' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+              <span class="w-5 h-5 rounded bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">A</span>
+              <span class="truncate">{{ selectedQuestion.option_a }}</span>
+              <span v-if="selectedQuestion.answer === 'A'" class="ml-auto text-emerald-400 text-sm">✓</span>
+            </div>
+            <div class="p-2.5 rounded-xl border flex items-center space-x-2"
+                 :class="selectedQuestion.answer === 'B' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+              <span class="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">B</span>
+              <span class="truncate">{{ selectedQuestion.option_b }}</span>
+              <span v-if="selectedQuestion.answer === 'B'" class="ml-auto text-emerald-400 text-sm">✓</span>
+            </div>
+            <div class="p-2.5 rounded-xl border flex items-center space-x-2"
+                 :class="selectedQuestion.answer === 'C' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+              <span class="w-5 h-5 rounded bg-amber-600 text-white flex items-center justify-center font-bold text-[10px]">C</span>
+              <span class="truncate">{{ selectedQuestion.option_c }}</span>
+              <span v-if="selectedQuestion.answer === 'C'" class="ml-auto text-emerald-400 text-sm">✓</span>
+            </div>
+            <div class="p-2.5 rounded-xl border flex items-center space-x-2"
+                 :class="selectedQuestion.answer === 'D' ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 font-bold' : 'bg-slate-800/40 border-slate-800 text-slate-300'">
+              <span class="w-5 h-5 rounded bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">D</span>
+              <span class="truncate">{{ selectedQuestion.option_d }}</span>
+              <span v-if="selectedQuestion.answer === 'D'" class="ml-auto text-emerald-400 text-sm">✓</span>
+            </div>
+          </div>
+
+          <!-- 教師獨享解析提示 -->
+          <div class="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-xs text-slate-400 leading-relaxed">
+            <strong class="text-cyan-400">💡 教學要點提示：</strong>
+            {{ selectedQuestion.explanation }}
+          </div>
+        </div>
+
+        <!-- 遊戲進程核心控制盤 (大按鈕區) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold text-slate-200">🕹️ 課堂出題控制盤</h2>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-slate-400">當前階段：</span>
+              <span class="text-xs font-bold font-mono px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700">
+                {{ currentStage }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 計時與秒數設定 -->
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="text-slate-400">作答限時：</span>
+            <button v-for="sec in [15, 20, 30, 45]" :key="sec"
+                    @click="setDuration(sec)"
+                    class="px-2.5 py-1 rounded font-mono font-bold"
+                    :class="timerDuration === sec ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'">
+              {{ sec }}s
+            </button>
+            <button @click="addTime(10)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold font-mono">
+              +10s 延長
+            </button>
+          </div>
+
+          <!-- 主控動作按鈕群 -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2">
+            <!-- 動作 1: 發送出題 -->
+            <button @click="dispatchQuestion" 
+                    class="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
+              <span class="text-lg">🚀</span>
+              <span>發送出題 (開始)</span>
+            </button>
+
+            <!-- 動作 2: 截止作答 / 統計 -->
+            <button @click="showDistribution" 
+                    class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex flex-col items-center justify-center space-y-1">
+              <span class="text-lg">📊</span>
+              <span>截止 & 投影長條圖</span>
+            </button>
+
+            <!-- 動作 3: 揭曉答案與解析 -->
+            <button @click="revealAnswer" 
+                    class="p-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
+              <span class="text-lg">💡</span>
+              <span>揭曉答案與解析</span>
+            </button>
+
+            <!-- 動作 4: 投影排行榜 -->
+            <button @click="showLeaderboard" 
+                    class="p-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
+              <span class="text-lg">🏆</span>
+              <span>投影戰況排行榜</span>
+            </button>
+          </div>
+
+          <!-- 次要操作列 -->
+          <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-xs text-slate-400">
+            <button @click="resetToLobby" class="hover:text-white underline">
+              ↺ 回到大廳等待頁面
+            </button>
+            <button @click="exportResultsToCSV" class="text-cyan-400 hover:text-cyan-300 font-bold flex items-center space-x-1">
+              <span>📥 匯出當前作答成 CSV / 試算表</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const roomId = ref('DA-ROOM-888');
+        const roomMode = ref('GROUP_REPRESENTATIVE'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
+        const currentStage = ref('LOBBY');
+        const timerDuration = ref(30);
+        const timeLeft = ref(30);
+        let timerInterval = null;
+
+        const allQuestions = ref([]);
+        const filterModule = ref('');
+        const filterDifficulty = ref('');
+        const selectedQuestion = ref(null);
+        const currentResponses = ref({});
+        const buzzerWinner = ref('');
+        const connectedCount = ref(6);
+
+        // 假資料積分榜
+        const leaderboard = ref([
+          { name: '第 1 組', score: 450 },
+          { name: '第 3 組', score: 400 },
+          { name: '第 5 組', score: 350 },
+          { name: '第 2 組', score: 300 },
+          { name: '第 4 組', score: 250 },
+          { name: '第 6 組', score: 200 }
+        ]);
+
+        let sync;
+
+        const filteredQuestions = computed(() => {
+          return allQuestions.value.filter(q => {
+            if (filterModule.value && q.module !== filterModule.value) return false;
+            if (filterDifficulty.value && q.difficulty !== filterDifficulty.value) return false;
+            return true;
+          });
+        });
+
+        const expectedResponsesCount = computed(() => {
+          return roomMode.value === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+        });
+
+        const responseProgressPercent = computed(() => {
+          const count = Object.keys(currentResponses.value).length;
+          return Math.min(100, Math.round((count / expectedResponsesCount.value) * 100));
+        });
+
+        const optionCounts = computed(() => {
+          const counts = { A: 0, B: 0, C: 0, D: 0 };
+          Object.values(currentResponses.value).forEach(resp => {
+            if (counts[resp.option] !== undefined) {
+              counts[resp.option]++;
+            }
+          });
+          return counts;
+        });
+
+        // 載入題庫
+        const loadQuestions = async () => {
+          try {
+            const res = await fetch('questions.json');
+            allQuestions.value = await res.json();
+            if (allQuestions.value.length > 0) {
+              selectedQuestion.value = allQuestions.value[0];
+            }
+          } catch (e) {
+            console.error('Failed to load questions.json', e);
+          }
+        };
+
+        const selectQuestion = (q) => {
+          selectedQuestion.value = q;
+        };
+
+        const pickRandomQuestion = () => {
+          const pool = filteredQuestions.value;
+          if (pool.length > 0) {
+            const r = Math.floor(Math.random() * pool.length);
+            selectedQuestion.value = pool[r];
+          }
+        };
+
+        const setMode = (mode) => {
+          roomMode.value = mode;
+          connectedCount.value = mode === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          broadcastState();
+        };
+
+        const setDuration = (sec) => {
+          timerDuration.value = sec;
+          timeLeft.value = sec;
+        };
+
+        const addTime = (sec) => {
+          timeLeft.value += sec;
+          broadcastState();
+        };
+
+        // 廣播當前狀態至投影端與學生端
+        const broadcastState = () => {
+          const totalResp = Object.keys(currentResponses.value).length || 1;
+          const stats = {
+            A: Math.round(((optionCounts.value.A || 0) / totalResp) * 100),
+            B: Math.round(((optionCounts.value.B || 0) / totalResp) * 100),
+            C: Math.round(((optionCounts.value.C || 0) / totalResp) * 100),
+            D: Math.round(((optionCounts.value.D || 0) / totalResp) * 100)
+          };
+
+          const statePayload = {
+            stage: currentStage.value,
+            mode: roomMode.value,
+            question: selectedQuestion.value,
+            timeLeft: timeLeft.value,
+            connectedCount: connectedCount.value,
+            responseCount: Object.keys(currentResponses.value).length,
+            stats: stats,
+            buzzerWinner: buzzerWinner.value,
+            leaderboard: leaderboard.value
+          };
+
+          sync.emit('state_change', statePayload);
+          sync.saveStateSnapshot(statePayload);
+        };
+
+        // 倒數計時器
+        const startTimer = () => {
+          if (timerInterval) clearInterval(timerInterval);
+          timeLeft.value = timerDuration.value;
+          timerInterval = setInterval(() => {
+            if (timeLeft.value > 0) {
+              timeLeft.value--;
+              broadcastState();
+            } else {
+              clearInterval(timerInterval);
+              showDistribution();
+            }
+          }, 1000);
+        };
+
+        // 出題
+        const dispatchQuestion = () => {
+          if (!selectedQuestion.value) return;
+          currentResponses.value = {};
+          buzzerWinner.value = '';
+
+          if (selectedQuestion.value.question_type === 'speed_buzzer') {
+            currentStage.value = 'BUZZER_ALERT';
+            broadcastState();
+          } else {
+            currentStage.value = 'QUESTION_ACTIVE';
+            startTimer();
+            broadcastState();
+          }
+        };
+
+        // 截止與公佈統計
+        const showDistribution = () => {
+          if (timerInterval) clearInterval(timerInterval);
+          currentStage.value = 'STATS';
+          broadcastState();
+        };
+
+        // 揭曉答案
+        const revealAnswer = () => {
+          currentStage.value = 'REVEAL';
+          // 計算積分更新
+          if (selectedQuestion.value) {
+            const correctAns = selectedQuestion.value.answer;
+            const pts = selectedQuestion.value.score || 100;
+            Object.values(currentResponses.value).forEach(r => {
+              if (r.option === correctAns) {
+                const target = leaderboard.value.find(p => p.name === r.playerName);
+                if (target) target.score += pts;
+              }
+            });
+          }
+          broadcastState();
+        };
+
+        // 投影排行榜
+        const showLeaderboard = () => {
+          currentStage.value = 'LEADERBOARD';
+          broadcastState();
+        };
+
+        const resetToLobby = () => {
+          if (timerInterval) clearInterval(timerInterval);
+          currentStage.value = 'LOBBY';
+          broadcastState();
+        };
+
+        const exportResultsToCSV = () => {
+          let csv = 'Timestamp,Question_ID,Module,Player_or_Team,Selected_Option,Is_Correct,Score\n';
+          const q = selectedQuestion.value;
+          Object.values(currentResponses.value).forEach(r => {
+            const isCorrect = q && r.option === q.answer ? 'YES' : 'NO';
+            const score = isCorrect === 'YES' ? (q.score || 100) : 0;
+            csv += `${new Date().toISOString()},${q ? q.id : ''},${q ? q.module : ''},"${r.playerName}",${r.option},${isCorrect},${score}\n`;
+          });
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `Game_Logs_${new Date().toISOString().slice(0, 10)}.csv`;
+          link.click();
+        };
+
+        onMounted(async () => {
+          await loadQuestions();
+          sync = new GameSync(roomId.value, 'host');
+
+          // 監聽學生端作答
+          sync.on('submit_answer', (answerData) => {
+            currentResponses.value[answerData.playerId] = answerData;
+            broadcastState();
+          });
+
+          // 監聽搶答
+          sync.on('buzzer_hit', (buzzerData) => {
+            if (!buzzerWinner.value) {
+              buzzerWinner.value = buzzerData.playerName;
+              currentStage.value = 'BUZZER_WINNER';
+              startTimer();
+              broadcastState();
+            }
+          });
+
+          broadcastState();
+        });
+
+        return {
+          roomId,
+          roomMode,
+          currentStage,
+          timerDuration,
+          timeLeft,
+          allQuestions,
+          filterModule,
+          filterDifficulty,
+          selectedQuestion,
+          filteredQuestions,
+          currentResponses,
+          expectedResponsesCount,
+          responseProgressPercent,
+          optionCounts,
+          buzzerWinner,
+          connectedCount,
+          selectQuestion,
+          pickRandomQuestion,
+          setMode,
+          setDuration,
+          addTime,
+          dispatchQuestion,
+          showDistribution,
+          revealAnswer,
+          showLeaderboard,
+          resetToLobby,
+          exportResultsToCSV
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
