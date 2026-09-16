@@ -33,40 +33,18 @@
         </div>
       </div>
 
-            <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
-      <div class="flex items-center space-x-2">
-        <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
-          <button @click="setMode('INDIVIDUAL')" 
-                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-            👤 個人競賽制 (30人)
-          </button>
-          <button @click="setMode('GROUP_REPRESENTATIVE')" 
-                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-            👥 小組代表制 (6組長代表)
-          </button>
-        </div>
-
-        <!-- 教師端遠端控制大螢幕比例 -->
-        <div class="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-xs">
-          <span class="text-slate-400 px-2 text-[11px] font-bold">大螢幕:</span>
-          <button @click="setProjectorAspect('16-9')" 
-                  class="px-2 py-1 rounded-lg font-mono font-bold transition-all"
-                  :class="projectorAspectSetting === '16-9' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'">
-            16:9
-          </button>
-          <button @click="setProjectorAspect('4-3')" 
-                  class="px-2 py-1 rounded-lg font-mono font-bold transition-all"
-                  :class="projectorAspectSetting === '4-3' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'">
-            4:3
-          </button>
-          <button @click="setProjectorAspect('auto')" 
-                  class="px-2 py-1 rounded-lg font-mono font-bold transition-all"
-                  :class="projectorAspectSetting === 'auto' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'">
-            自動
-          </button>
-        </div>
+                  <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
+      <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+        <button @click="setMode('INDIVIDUAL')" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+          👤 個人競賽制 (30人)
+        </button>
+        <button @click="setMode('GROUP_REPRESENTATIVE')" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+          👥 小組代表制 (6組長代表)
+        </button>
       </div>
     </header>
 
