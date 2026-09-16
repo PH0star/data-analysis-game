@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>數據分析大冒險 - 投影大畫面 (Projector)</title>
+  <title>數據分析實戰互動遊戲 - 投影大畫面 (v2.4)</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
-  <script src="sync-channel.js?v=2.3"></script>
+  <script src="sync-channel.js?v=2.4"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -15,125 +15,165 @@
       box-sizing: border-box;
       user-select: none;
     }
-    body {
-      font-family: 'Noto Sans TC', sans-serif;
-      background-color: #030712;
-      color: #f8fafc;
-      overflow: hidden;
+    html, body {
       margin: 0;
       padding: 0;
       width: 100vw;
       height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow: hidden;
+      background-color: #020617;
+      color: #f8fafc;
+      font-family: 'Noto Sans TC', sans-serif;
     }
     .font-mono {
       font-family: 'JetBrains Mono', monospace;
     }
 
-    /* 滿版畫布容器 - 支援動態比例約束與平滑過渡 */
-    .screen-canvas {
+    /* 視窗外框容器：置中投影舞台 */
+    .viewport-wrapper {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #020617;
+      position: relative;
+    }
+
+    /* 投影主畫布舞台 */
+    .screen-stage {
       height: 100vh;
       width: 100vw;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       background-color: #080c14;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease;
       position: relative;
+      overflow: hidden;
+    }
+
+    /* 4:3 傳統投影劇院框約束 (在 16:9 寬螢幕上呈現高對比側邊框，視覺極度明顯) */
+    .frame-4-3 {
+      max-width: calc(100vh * 4 / 3) !important;
+      box-shadow: 0 0 100px rgba(0, 0, 0, 0.95), 0 0 20px rgba(56, 189, 248, 0.2);
+      border-left: 3px solid #0284c7;
+      border-right: 3px solid #0284c7;
+    }
+
+    /* 16:9 寬螢幕劇院框約束 */
+    .frame-16-9 {
+      max-width: 100vw;
     }
 
     /* ===================================================
-       16:9 寬螢幕排版模式 (左右分欄 • 寬景高視野)
+       16:9 寬螢幕排版 (左右雙欄 • 題幹左側大畫布 • 絕不被壓扁)
        =================================================== */
-    .mode-16-9 {
-      padding: 1.5rem 2.5rem;
+    .layout-16-9 {
+      padding: 1.25rem 2.25rem;
     }
-    .forced-16-9 {
-      max-width: calc(100vh * 16 / 9) !important;
-      margin: 0 auto;
-      box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
-      border-left: 2px solid #1e293b;
-      border-right: 2px solid #1e293b;
-    }
-    .mode-16-9 .question-layout {
+    .layout-16-9 .stage-grid {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
-      gap: 1.75rem;
-      align-items: stretch;
+      gap: 1.5rem;
       height: 100%;
+      min-height: 0;
+      align-items: stretch;
     }
-    .mode-16-9 .options-grid {
+    .layout-16-9 .question-pane {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      gap: 0.75rem;
+    }
+    .layout-16-9 .options-pane {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 0.85rem;
+      gap: 0.75rem;
       height: 100%;
+      min-height: 0;
     }
-    .mode-16-9 .option-card {
-      flex: 1;
-      padding: 0.85rem 1.4rem;
+    .layout-16-9 .option-card {
+      flex: 1 1 0;
+      min-height: 0;
       display: flex;
       align-items: center;
+      padding: 0.75rem 1.25rem;
     }
 
     /* ===================================================
-       4:3 傳統投影排版模式 (上下堆疊 • 2x2 宮格緊湊)
+       4:3 傳統投影排版 (上下分層 • 題幹保障高度 • 2x2宮格)
        =================================================== */
-    .mode-4-3 {
-      padding: 1.2rem 1.8rem;
+    .layout-4-3 {
+      padding: 1rem 1.5rem;
     }
-    .forced-4-3 {
-      max-width: calc(100vh * 4 / 3) !important;
-      margin: 0 auto;
-      box-shadow: 0 0 80px rgba(0, 0, 0, 0.95);
-      border-left: 3px solid #334155;
-      border-right: 3px solid #334155;
-    }
-    .mode-4-3 .question-layout {
+    .layout-4-3 .stage-grid {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       height: 100%;
+      min-height: 0;
       gap: 0.75rem;
     }
-    .mode-4-3 .question-box {
-      max-height: 44vh;
-      overflow-y: auto;
+    .layout-4-3 .question-pane {
+      flex: 1 1 55%;
+      min-height: 140px; /* 核心修復：強制保障題幹高度，絕不被壓扁消失！ */
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      overflow: hidden;
     }
-    .mode-4-3 .options-grid {
+    .layout-4-3 .options-pane {
+      flex: 0 0 45%;
+      min-height: 140px;
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 0.65rem;
     }
-    .mode-4-3 .option-card {
-      padding: 0.8rem 1.1rem;
-      min-height: 80px;
+    .layout-4-3 .option-card {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      padding: 0.6rem 1rem;
     }
 
-    /* 選項色彩定義 */
-    .opt-a { background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(185, 28, 28, 0.25)); border-color: #ef4444; }
-    .opt-b { background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(29, 78, 216, 0.25)); border-color: #3b82f6; }
-    .opt-c { background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(180, 83, 9, 0.25)); border-color: #f59e0b; }
-    .opt-d { background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(4, 120, 87, 0.25)); border-color: #10b981; }
+    /* 自訂捲軸美化 */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.4);
+      border-radius: 4px;
+    }
+
+    /* 選項色彩卡片 */
+    .opt-a { background: linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(185, 28, 28, 0.28)); border-color: #ef4444; }
+    .opt-b { background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(29, 78, 216, 0.28)); border-color: #3b82f6; }
+    .opt-c { background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(180, 83, 9, 0.28)); border-color: #f59e0b; }
+    .opt-d { background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(4, 120, 87, 0.28)); border-color: #10b981; }
 
     .opt-a-badge { background-color: #ef4444; }
     .opt-b-badge { background-color: #3b82f6; }
     .opt-c-badge { background-color: #f59e0b; }
     .opt-d-badge { background-color: #10b981; }
 
-    /* 正確答案發光強調動畫 */
+    /* 正解光暈脈衝 */
     .correct-pulse {
-      animation: correctGlow 1.4s infinite alternate;
+      animation: correctGlow 1.3s infinite alternate;
       border-color: #22c55e !important;
-      background: linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(21, 128, 61, 0.5)) !important;
-      box-shadow: 0 0 35px rgba(34, 197, 94, 0.6);
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(21, 128, 61, 0.6)) !important;
+      box-shadow: 0 0 40px rgba(34, 197, 94, 0.7);
       transform: scale(1.02);
     }
     @keyframes correctGlow {
       from { box-shadow: 0 0 20px rgba(34, 197, 94, 0.4); }
-      to { box-shadow: 0 0 45px rgba(34, 197, 94, 0.85); }
+      to { box-shadow: 0 0 50px rgba(34, 197, 94, 0.9); }
     }
 
     /* 搶答燈全螢幕閃爍 */
@@ -141,245 +181,250 @@
       animation: buzzerFlash 0.5s infinite alternate;
     }
     @keyframes buzzerFlash {
-      from { background-color: rgba(220, 38, 38, 0.2); }
-      to { background-color: rgba(220, 38, 38, 0.5); }
+      from { background-color: rgba(220, 38, 38, 0.25); }
+      to { background-color: rgba(220, 38, 38, 0.55); }
     }
 
-    /* 切換比例提示浮條 */
-    .toast-anim {
-      animation: toastPop 1.8s forwards;
+    /* HUD 比例切換提示浮條 */
+    .toast-popup {
+      animation: toastAnim 2s forwards;
     }
-    @keyframes toastPop {
-      0% { opacity: 0; transform: translate(-50%, -20px) scale(0.9); }
+    @keyframes toastAnim {
+      0% { opacity: 0; transform: translate(-50%, -25px) scale(0.9); }
       15% { opacity: 1; transform: translate(-50%, 0) scale(1); }
       80% { opacity: 1; transform: translate(-50%, 0) scale(1); }
-      100% { opacity: 0; transform: translate(-50%, -20px) scale(0.9); }
+      100% { opacity: 0; transform: translate(-50%, -25px) scale(0.9); }
     }
   </style>
 </head>
 <body>
-  <div id="app" class="screen-canvas" :class="[aspectModeClass, forcedClass, currentStage === 'BUZZER_ALERT' ? 'buzzer-alert' : '']">
+  <div class="viewport-wrapper">
+    
+    <div id="app" class="screen-stage" :class="[activeLayoutClass, forcedFrameClass, currentStage === 'BUZZER_ALERT' ? 'buzzer-alert' : '']">
 
-    <!-- 比例切換即時反饋提示 (HUD Toast) -->
-    <div v-if="toastMessage" class="toast-anim fixed top-16 left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 rounded-full bg-cyan-500/90 text-slate-950 font-bold text-sm shadow-2xl border border-cyan-300 pointer-events-none flex items-center space-x-2">
-      <span>📐</span>
-      <span>{{ toastMessage }}</span>
-    </div>
-
-    <!-- 頂部資訊列 (Header) -->
-    <header class="flex items-center justify-between border-b border-slate-800 pb-3 flex-shrink-0">
-      <div class="flex items-center space-x-3">
-        <span class="px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-blue-600/30 text-blue-400 border border-blue-500/30">
-          {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制 (C組模式)' : '👤 個人競賽制' }}
-        </span>
-        <span v-if="currentQuestion" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-          模組：{{ currentQuestion.module }} | {{ currentQuestion.subcategory }}
-        </span>
-        <span v-if="currentQuestion" class="px-2.5 py-1 rounded-full text-xs font-bold"
-              :class="difficultyBadgeClass">
-          難度：{{ currentQuestion.difficulty }} ({{ currentQuestion.score }}分)
-        </span>
+      <!-- HUD 比例切換浮動通知 -->
+      <div v-if="toastMessage" class="toast-popup fixed top-16 left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 rounded-full bg-cyan-400 text-slate-950 font-black text-sm shadow-2xl border-2 border-white pointer-events-none flex items-center space-x-2">
+        <span>📐</span>
+        <span>{{ toastMessage }}</span>
       </div>
 
-      <!-- 中央倒數計時器 -->
-      <div v-if="isAnswering" class="flex items-center space-x-3 bg-slate-900/80 px-5 py-1.5 rounded-full border border-slate-700 shadow-lg">
-        <span class="text-xs text-slate-400 font-medium">剩餘時間</span>
-        <span class="text-2xl font-black font-mono" :class="timeLeft <= 5 ? 'text-red-400 animate-ping' : 'text-cyan-400'">
-          {{ timeLeft }}s
-        </span>
-      </div>
-
-      <!-- 右側房間資訊與比例切換鈕 -->
-      <div class="flex items-center space-x-3">
-        <div class="text-right">
-          <div class="text-xs text-slate-400">房間代碼</div>
-          <div class="text-base font-black font-mono tracking-wider text-cyan-300 flex items-center space-x-1.5">
-            <span>{{ roomId }}</span>
-            <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-500 font-mono">v2.3</span>
-          </div>
+      <!-- 頂部資訊列 (Header) -->
+      <header class="flex items-center justify-between border-b border-slate-800 pb-2.5 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <span class="px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-blue-600/30 text-blue-400 border border-blue-500/30">
+            {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制 (C組模式)' : '👤 個人競賽制' }}
+          </span>
+          <span v-if="currentQuestion" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            模組：{{ currentQuestion.module }} | {{ currentQuestion.subcategory }}
+          </span>
+          <span v-if="currentQuestion" class="px-2.5 py-1 rounded-full text-xs font-bold"
+                :class="difficultyBadgeClass">
+            難度：{{ currentQuestion.difficulty }} ({{ currentQuestion.score }}分)
+          </span>
         </div>
 
-        <!-- 16:9 / 4:3 比例切換標籤 (支援自動與手動) -->
-        <button @click="toggleAspectRatio" 
-                class="px-3 py-1.5 text-xs rounded-xl font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 shadow-md flex items-center space-x-1 transition-all active:scale-95"
-                title="點擊切換 16:9 寬螢幕 / 4:3 傳統投影 / 自動感應">
-          <span>📐 {{ aspectLabel }}</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- 中央舞台區 (Main Content) -->
-    <main class="flex-1 my-3 relative overflow-hidden flex flex-col justify-center">
-      
-      <!-- 狀態 1: 大廳等待模式 (LOBBY) -->
-      <div v-if="currentStage === 'LOBBY'" class="flex flex-col items-center justify-center text-center space-y-6">
-        <div class="inline-block px-4 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-sm tracking-widest animate-pulse">
-          READY TO START
+        <!-- 中央倒數計時器 -->
+        <div v-if="isAnswering" class="flex items-center space-x-3 bg-slate-900/90 px-5 py-1.5 rounded-full border border-slate-700 shadow-xl">
+          <span class="text-xs text-slate-400 font-medium">剩餘時間</span>
+          <span class="text-2xl font-black font-mono" :class="timeLeft <= 5 ? 'text-red-400 animate-ping' : 'text-cyan-400'">
+            {{ timeLeft }}s
+          </span>
         </div>
-        <h1 class="text-4xl lg:text-5xl font-black tracking-tight text-white">
-          數據分析實戰互動遊戲
-        </h1>
-        <p class="text-lg text-slate-400 max-w-2xl">
-          {{ roomMode === 'GROUP_REPRESENTATIVE' 
-             ? '請各小組（第 1 ~ 6 組）由組長代表以手機連線登入' 
-             : '請全體學員以手機掃描或輸入網址加入競賽' }}
-        </p>
-        <div class="bg-slate-900/90 border border-slate-700 p-6 rounded-2xl flex items-center space-x-8 shadow-2xl">
-          <div class="text-left">
-            <div class="text-xs text-slate-400 uppercase tracking-widest">連線網址</div>
-            <div class="text-2xl font-black text-cyan-400 font-mono mt-1">/play.html</div>
-            <div class="text-xs text-slate-400 uppercase tracking-widest mt-3">房間代碼</div>
-            <div class="text-3xl font-black text-white font-mono mt-1">{{ roomId }}</div>
-          </div>
-          <div class="h-24 w-px bg-slate-800"></div>
-          <div class="text-center">
-            <div class="text-xs text-slate-400 uppercase tracking-widest">已連線在線人數</div>
-            <div class="text-4xl font-black text-emerald-400 font-mono mt-1">{{ connectedCount }}</div>
-          </div>
-        </div>
-      </div>
 
-      <!-- 狀態 2: 排行榜模式 (LEADERBOARD) -->
-      <div v-else-if="currentStage === 'LEADERBOARD'" class="flex flex-col items-center justify-center h-full space-y-5 animate-fadeIn">
-        <h2 class="text-3xl lg:text-4xl font-black text-amber-300 flex items-center space-x-3">
-          <span>🏆</span>
-          <span>即時戰況排行榜</span>
-          <span>🏆</span>
-        </h2>
-        <div class="w-full max-w-2xl bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-3">
-          <div v-for="(player, idx) in sortedLeaderboard" :key="idx" 
-               class="flex items-center justify-between p-3.5 rounded-xl border transition-all"
-               :class="idx === 0 ? 'bg-amber-500/20 border-amber-500/50 scale-[1.02]' : 'bg-slate-800/50 border-slate-700'">
-            <div class="flex items-center space-x-4">
-              <span class="font-mono font-black text-xl w-8 text-center"
-                    :class="idx === 0 ? 'text-amber-300 text-2xl' : idx === 1 ? 'text-slate-300 text-xl' : idx === 2 ? 'text-amber-600' : 'text-slate-500'">
-                {{ idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '#' + (idx + 1) }}
-              </span>
-              <span class="font-bold text-lg text-white">{{ player.name }}</span>
-            </div>
-            <div class="font-mono font-black text-xl text-cyan-400">
-              {{ player.score }} 分
+        <!-- 右側房間資訊與切換比例按鈕 -->
+        <div class="flex items-center space-x-3">
+          <div class="text-right">
+            <div class="text-xs text-slate-400">房間代碼</div>
+            <div class="text-sm font-black font-mono tracking-wider text-cyan-300 flex items-center space-x-1.5">
+              <span>{{ roomId }}</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-500 font-mono">v2.4</span>
             </div>
           </div>
-          <div v-if="!sortedLeaderboard || sortedLeaderboard.length === 0" class="text-center py-6 text-slate-500 text-sm">
-            尚未有得分紀錄
-          </div>
+
+          <!-- 16:9 / 4:3 比例切換按鈕 (支援主控台遠端與本機點擊) -->
+          <button @click="cycleAspectRatio" 
+                  class="px-3.5 py-1.5 text-xs rounded-xl font-black bg-cyan-500 hover:bg-cyan-400 text-slate-950 border border-cyan-300 shadow-lg shadow-cyan-500/20 flex items-center space-x-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="點擊立即切換 16:9 寬螢幕 / 4:3 傳統投影 / 自動感應">
+            <span>📐 {{ aspectButtonLabel }}</span>
+          </button>
         </div>
-      </div>
+      </header>
 
-      <!-- 狀態 3: 搶答題專屬過場 (BUZZER_ALERT & BUZZER_WINNER) -->
-      <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center text-center space-y-6 animate-bounce">
-        <div class="text-6xl">⚡</div>
-        <h2 class="text-5xl font-black text-amber-300 tracking-wider">
-          【極速搶答題】
-        </h2>
-        <p class="text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
-      </div>
-
-      <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-6">
-        <div class="text-6xl">🎉</div>
-        <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-xl font-bold">
-          恭喜搶得優先作答權！
-        </div>
-        <h2 class="text-5xl font-black text-white">
-          {{ buzzerWinnerName }}
-        </h2>
-        <p class="text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
-      </div>
-
-      <!-- 狀態 4: 標準出題與展示 (QUESTION_ACTIVE / STATS / REVEAL) -->
-      <!-- 支援 16:9 左右分欄 與 4:3 上下分層自適應結構 -->
-      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
-           class="question-layout">
+      <!-- 中央舞台區 (Main Content) -->
+      <main class="flex-1 min-h-0 my-2 relative overflow-hidden flex flex-col justify-center">
         
-        <!-- 左欄 (16:9) / 上方 (4:3)：題幹與解析 -->
-        <div class="flex flex-col justify-between space-y-3 h-full overflow-hidden">
-          
-          <!-- 題幹主區塊 -->
-          <div class="question-box bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-lg overflow-y-auto flex-1">
-            <div class="flex items-center space-x-2 text-xs text-slate-400 mb-2 font-mono">
-              <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-bold">#{{ currentQuestion.id }}</span>
-              <span>•</span>
-              <span class="text-cyan-400 uppercase font-bold">{{ questionTypeLabel(currentQuestion.question_type) }}</span>
-              <span class="text-slate-600">|</span>
-              <span class="text-slate-400">{{ currentQuestion.module }}</span>
+        <!-- 狀態 1: 大廳等待模式 (LOBBY) -->
+        <div v-if="currentStage === 'LOBBY'" class="flex flex-col items-center justify-center text-center space-y-6">
+          <div class="inline-block px-4 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-sm tracking-widest animate-pulse">
+            READY TO START
+          </div>
+          <h1 class="text-4xl lg:text-5xl font-black tracking-tight text-white">
+            數據分析實戰互動遊戲
+          </h1>
+          <p class="text-lg text-slate-400 max-w-2xl">
+            {{ roomMode === 'GROUP_REPRESENTATIVE' 
+               ? '請各小組（第 1 ~ 6 組）由組長代表以手機連線登入' 
+               : '請全體學員以手機掃描或輸入網址加入競賽' }}
+          </p>
+          <div class="bg-slate-900/90 border border-slate-700 p-6 rounded-2xl flex items-center space-x-8 shadow-2xl">
+            <div class="text-left">
+              <div class="text-xs text-slate-400 uppercase tracking-widest">連線網址</div>
+              <div class="text-2xl font-black text-cyan-400 font-mono mt-1">/play.html</div>
+              <div class="text-xs text-slate-400 uppercase tracking-widest mt-3">房間代碼</div>
+              <div class="text-3xl font-black text-white font-mono mt-1">{{ roomId }}</div>
             </div>
-            <h2 class="text-xl lg:text-2xl xl:text-3xl font-bold leading-relaxed text-slate-100">
-              {{ currentQuestion.question }}
-            </h2>
+            <div class="h-24 w-px bg-slate-800"></div>
+            <div class="text-center">
+              <div class="text-xs text-slate-400 uppercase tracking-widest">已連線在線人數</div>
+              <div class="text-4xl font-black text-emerald-400 font-mono mt-1">{{ connectedCount }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 狀態 2: 排行榜模式 (LEADERBOARD) -->
+        <div v-else-if="currentStage === 'LEADERBOARD'" class="flex flex-col items-center justify-center h-full space-y-4 animate-fadeIn">
+          <h2 class="text-3xl lg:text-4xl font-black text-amber-300 flex items-center space-x-3">
+            <span>🏆</span>
+            <span>即時戰況排行榜</span>
+            <span>🏆</span>
+          </h2>
+          <div class="w-full max-w-2xl bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-3">
+            <div v-for="(player, idx) in sortedLeaderboard" :key="idx" 
+                 class="flex items-center justify-between p-3.5 rounded-xl border transition-all"
+                 :class="idx === 0 ? 'bg-amber-500/20 border-amber-500/50 scale-[1.02]' : 'bg-slate-800/50 border-slate-700'">
+              <div class="flex items-center space-x-4">
+                <span class="font-mono font-black text-xl w-8 text-center"
+                      :class="idx === 0 ? 'text-amber-300 text-2xl' : idx === 1 ? 'text-slate-300 text-xl' : idx === 2 ? 'text-amber-600' : 'text-slate-500'">
+                  {{ idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '#' + (idx + 1) }}
+                </span>
+                <span class="font-bold text-lg text-white">{{ player.name }}</span>
+              </div>
+              <div class="font-mono font-black text-xl text-cyan-400">
+                {{ player.score }} 分
+              </div>
+            </div>
+            <div v-if="!sortedLeaderboard || sortedLeaderboard.length === 0" class="text-center py-6 text-slate-500 text-sm">
+              尚未有得分紀錄
+            </div>
+          </div>
+        </div>
+
+        <!-- 狀態 3: 搶答題專屬過場 (BUZZER_ALERT & BUZZER_WINNER) -->
+        <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center text-center space-y-6 animate-bounce">
+          <div class="text-6xl">⚡</div>
+          <h2 class="text-5xl font-black text-amber-300 tracking-wider">
+            【極速搶答題】
+          </h2>
+          <p class="text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
+        </div>
+
+        <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-6">
+          <div class="text-6xl">🎉</div>
+          <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-xl font-bold">
+            恭喜搶得優先作答權！
+          </div>
+          <h2 class="text-5xl font-black text-white">
+            {{ buzzerWinnerName }}
+          </h2>
+          <p class="text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
+        </div>
+
+        <!-- 狀態 4: 題目進行與結算 (QUESTION_ACTIVE / STATS / REVEAL) -->
+        <!-- 核心結構：徹底防範壓扁崩潰 -->
+        <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
+             class="stage-grid">
+          
+          <!-- 題幹與解析區塊 (左側 16:9 / 上方 4:3) -->
+          <div class="question-pane">
+            
+            <!-- 題幹主卡片 (具備最低高度保護與自適應字體) -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 lg:p-6 shadow-xl flex-1 min-h-0 overflow-y-auto flex flex-col justify-start">
+              <div class="flex items-center space-x-2 text-xs text-slate-400 mb-2.5 font-mono flex-shrink-0">
+                <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-bold">#{{ currentQuestion.id }}</span>
+                <span>•</span>
+                <span class="text-cyan-400 uppercase font-bold">{{ questionTypeLabel(currentQuestion.question_type) }}</span>
+                <span class="text-slate-600">|</span>
+                <span class="text-slate-300">{{ currentQuestion.module }}</span>
+              </div>
+              <h2 class="text-lg lg:text-2xl xl:text-3xl font-bold leading-relaxed text-slate-100 whitespace-pre-line">
+                {{ currentQuestion.question }}
+              </h2>
+            </div>
+
+            <!-- 答案揭曉解析卡片 (REVEAL 階段展開) -->
+            <div v-if="currentStage === 'REVEAL'" class="bg-emerald-950/60 border border-emerald-500/60 rounded-xl p-3.5 lg:p-4 flex items-start space-x-3 animate-fadeIn flex-shrink-0 shadow-2xl max-h-[35%] overflow-y-auto">
+              <div class="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold text-xs lg:text-sm flex-shrink-0">
+                標準正解：{{ currentQuestion.answer }}
+              </div>
+              <p class="text-emerald-200 text-xs lg:text-sm leading-relaxed flex-1">
+                <strong>觀念解析：</strong>{{ currentQuestion.explanation }}
+              </p>
+            </div>
+
           </div>
 
-          <!-- 答案揭曉解析卡片 (僅在 REVEAL 階段展開) -->
-          <div v-if="currentStage === 'REVEAL'" class="bg-emerald-950/50 border border-emerald-500/60 rounded-xl p-4 flex items-start space-x-4 animate-fadeIn flex-shrink-0 shadow-xl">
-            <div class="px-3 py-1 rounded bg-emerald-600 text-white font-bold text-sm flex-shrink-0">
-              正解：{{ currentQuestion.answer }}
+          <!-- 選項按鈕區 (右側 16:9 / 下方 4:3) -->
+          <div class="options-pane">
+            
+            <!-- 選項 A -->
+            <div class="option-card opt-a relative border-2 rounded-xl flex items-center space-x-3 transition-all"
+                 :class="getOptionFeedbackClass('A')">
+              <span class="opt-a-badge text-white font-black font-mono w-9 h-9 lg:w-11 lg:h-11 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">A</span>
+              <span class="text-sm lg:text-base xl:text-lg font-medium text-slate-100 flex-1 leading-snug break-words">{{ currentQuestion.option_a }}</span>
+              <div v-if="showStats" class="text-right pl-2 flex-shrink-0">
+                <span class="font-mono font-bold text-lg lg:text-xl text-slate-200">{{ optionStats.A || 0 }}%</span>
+              </div>
             </div>
-            <p class="text-emerald-200 text-xs lg:text-sm leading-relaxed flex-1">
-              <strong>觀念解析：</strong>{{ currentQuestion.explanation }}
-            </p>
+
+            <!-- 選項 B -->
+            <div class="option-card opt-b relative border-2 rounded-xl flex items-center space-x-3 transition-all"
+                 :class="getOptionFeedbackClass('B')">
+              <span class="opt-b-badge text-white font-black font-mono w-9 h-9 lg:w-11 lg:h-11 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">B</span>
+              <span class="text-sm lg:text-base xl:text-lg font-medium text-slate-100 flex-1 leading-snug break-words">{{ currentQuestion.option_b }}</span>
+              <div v-if="showStats" class="text-right pl-2 flex-shrink-0">
+                <span class="font-mono font-bold text-lg lg:text-xl text-slate-200">{{ optionStats.B || 0 }}%</span>
+              </div>
+            </div>
+
+            <!-- 選項 C -->
+            <div class="option-card opt-c relative border-2 rounded-xl flex items-center space-x-3 transition-all"
+                 :class="getOptionFeedbackClass('C')">
+              <span class="opt-c-badge text-white font-black font-mono w-9 h-9 lg:w-11 lg:h-11 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">C</span>
+              <span class="text-sm lg:text-base xl:text-lg font-medium text-slate-100 flex-1 leading-snug break-words">{{ currentQuestion.option_c }}</span>
+              <div v-if="showStats" class="text-right pl-2 flex-shrink-0">
+                <span class="font-mono font-bold text-lg lg:text-xl text-slate-200">{{ optionStats.C || 0 }}%</span>
+              </div>
+            </div>
+
+            <!-- 選項 D -->
+            <div class="option-card opt-d relative border-2 rounded-xl flex items-center space-x-3 transition-all"
+                 :class="getOptionFeedbackClass('D')">
+              <span class="opt-d-badge text-white font-black font-mono w-9 h-9 lg:w-11 lg:h-11 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">D</span>
+              <span class="text-sm lg:text-base xl:text-lg font-medium text-slate-100 flex-1 leading-snug break-words">{{ currentQuestion.option_d }}</span>
+              <div v-if="showStats" class="text-right pl-2 flex-shrink-0">
+                <span class="font-mono font-bold text-lg lg:text-xl text-slate-200">{{ optionStats.D || 0 }}%</span>
+              </div>
+            </div>
+
           </div>
 
         </div>
 
-        <!-- 右欄 (16:9) / 下方 (4:3)：選項按鈕群 -->
-        <div class="options-grid">
-          
-          <!-- 選項 A -->
-          <div class="option-card opt-a relative border-2 rounded-xl flex items-center space-x-4 transition-all"
-               :class="getOptionFeedbackClass('A')">
-            <span class="opt-a-badge text-white font-black font-mono w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">A</span>
-            <span class="text-base lg:text-lg font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_a }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-xl text-slate-200">{{ optionStats.A || 0 }}%</span>
-            </div>
-          </div>
+      </main>
 
-          <!-- 選項 B -->
-          <div class="option-card opt-b relative border-2 rounded-xl flex items-center space-x-4 transition-all"
-               :class="getOptionFeedbackClass('B')">
-            <span class="opt-b-badge text-white font-black font-mono w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">B</span>
-            <span class="text-base lg:text-lg font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_b }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-xl text-slate-200">{{ optionStats.B || 0 }}%</span>
-            </div>
-          </div>
-
-          <!-- 選項 C -->
-          <div class="option-card opt-c relative border-2 rounded-xl flex items-center space-x-4 transition-all"
-               :class="getOptionFeedbackClass('C')">
-            <span class="opt-c-badge text-white font-black font-mono w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">C</span>
-            <span class="text-base lg:text-lg font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_c }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-xl text-slate-200">{{ optionStats.C || 0 }}%</span>
-            </div>
-          </div>
-
-          <!-- 選項 D -->
-          <div class="option-card opt-d relative border-2 rounded-xl flex items-center space-x-4 transition-all"
-               :class="getOptionFeedbackClass('D')">
-            <span class="opt-d-badge text-white font-black font-mono w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow">D</span>
-            <span class="text-base lg:text-lg font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_d }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-xl text-slate-200">{{ optionStats.D || 0 }}%</span>
-            </div>
-          </div>
-
+      <!-- 底部狀態列 (Footer) -->
+      <footer class="flex items-center justify-between border-t border-slate-800 pt-2.5 text-xs text-slate-500 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <span>狀態：<strong class="text-slate-300 font-medium">{{ stageDescription }}</strong></span>
+          <span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '雲端同步中' : '連線準備中...' }}</span>
         </div>
+        <div class="flex items-center space-x-4 font-mono">
+          <span>模式：<strong class="text-cyan-400">{{ activeAspect === '16-9' ? '16:9 寬螢幕雙欄' : '4:3 傳統投影堆疊' }}</strong></span>
+          <span>已作答：<strong class="text-cyan-400 text-sm">{{ responseCount }}</strong> / {{ totalExpectedCount }}</span>
+        </div>
+      </footer>
 
-      </div>
-
-    </main>
-
-    <!-- 底部狀態列 (Footer) -->
-    <footer class="flex items-center justify-between border-t border-slate-800 pt-2.5 text-xs text-slate-500 flex-shrink-0">
-      <div class="flex items-center space-x-3">
-        <span>狀態：<strong class="text-slate-300 font-medium">{{ stageDescription }}</strong></span>
-        <span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '雲端同步中' : '連線準備中...' }}</span>
-      </div>
-      <div class="flex items-center space-x-4 font-mono">
-        <span>已作答：<strong class="text-cyan-400 text-sm">{{ responseCount }}</strong> / {{ totalExpectedCount }}</span>
-      </div>
-    </footer>
+    </div>
 
   </div>
 
@@ -389,8 +434,8 @@
     createApp({
       setup() {
         const roomId = ref('DA-ROOM-888');
-        const roomMode = ref('GROUP_REPRESENTATIVE'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
-        const currentStage = ref('LOBBY'); // LOBBY, QUESTION_ACTIVE, BUZZER_ALERT, BUZZER_WINNER, STATS, REVEAL, LEADERBOARD
+        const roomMode = ref('GROUP_REPRESENTATIVE');
+        const currentStage = ref('LOBBY');
         const currentQuestion = ref(null);
         const timeLeft = ref(30);
         const buzzerWinnerName = ref('');
@@ -402,11 +447,11 @@
         const toastMessage = ref('');
         let toastTimer = null;
 
-        // 版面設定：'auto', '16-9', '4-3'
+        // 比例設定狀態：'16-9', '4-3', 'auto'
         const userAspectSetting = ref('auto');
         const systemDetectedAspect = ref('16-9');
 
-        // 偵測目前視窗長寬比
+        // 偵測螢幕物理長寬比
         const checkWindowRatio = () => {
           const ratio = window.innerWidth / window.innerHeight;
           systemDetectedAspect.value = ratio >= 1.5 ? '16-9' : '4-3';
@@ -419,18 +464,17 @@
           return userAspectSetting.value;
         });
 
-        const aspectModeClass = computed(() => {
-          return activeAspect.value === '16-9' ? 'mode-16-9' : 'mode-4-3';
+        const activeLayoutClass = computed(() => {
+          return activeAspect.value === '16-9' ? 'layout-16-9' : 'layout-4-3';
         });
 
-        // 強制長寬比約束樣式 (在 16:9 螢幕上強制 4:3 呈現兩側黑邊劇院框)
-        const forcedClass = computed(() => {
-          if (userAspectSetting.value === '4-3') return 'forced-4-3';
-          if (userAspectSetting.value === '16-9') return 'forced-16-9';
-          return '';
+        // 強制約束畫布外框（當切換到 4:3 時，寬螢幕兩側呈現高對比劇院邊框）
+        const forcedFrameClass = computed(() => {
+          if (userAspectSetting.value === '4-3') return 'frame-4-3';
+          return 'frame-16-9';
         });
 
-        const aspectLabel = computed(() => {
+        const aspectButtonLabel = computed(() => {
           if (userAspectSetting.value === 'auto') {
             return `自動 (${activeAspect.value === '16-9' ? '16:9' : '4:3'})`;
           }
@@ -442,20 +486,25 @@
           if (toastTimer) clearTimeout(toastTimer);
           toastTimer = setTimeout(() => {
             toastMessage.value = '';
-          }, 1800);
+          }, 2000);
         };
 
-        // 切換長寬比循環
-        const toggleAspectRatio = () => {
-          if (userAspectSetting.value === 'auto') {
-            userAspectSetting.value = '16-9';
-            showToast('已切換至【16:9 寬螢幕投影模式】(左右雙欄佈局)');
-          } else if (userAspectSetting.value === '16-9') {
+        // 核心修復：循環切換（保證每一次點擊都有顯著且戲劇性的畫面改變！）
+        const cycleAspectRatio = () => {
+          if (userAspectSetting.value === '16-9') {
             userAspectSetting.value = '4-3';
-            showToast('已切換至【4:3 傳統投影模式】(上下堆疊 • 2x2宮格)');
-          } else {
+            showToast('📐 切換至【4:3 傳統投影模式】(上下分層 • 2×2宮格 • 實體邊框)');
+          } else if (userAspectSetting.value === '4-3') {
             userAspectSetting.value = 'auto';
-            showToast(`已切換至【自動自適應模式】(偵測為 ${systemDetectedAspect.value})`);
+            showToast(`📐 切換至【自動自適應模式】(系統偵測為 ${systemDetectedAspect.value})`);
+          } else {
+            // 從 auto 開始時，切換為與目前相反之模式，保證首發點擊必見改變！
+            userAspectSetting.value = (systemDetectedAspect.value === '16-9') ? '4-3' : '16-9';
+            if (userAspectSetting.value === '4-3') {
+              showToast('📐 切換至【4:3 傳統投影模式】(上下分層 • 2×2宮格 • 實體邊框)');
+            } else {
+              showToast('📐 切換至【16:9 寬螢幕投影模式】(左右雙欄佈局)');
+            }
           }
         };
 
@@ -528,6 +577,14 @@
             }
           });
           
+          // 支援教師主控台遠端廣播切換比例
+          sync.on('set_projector_aspect', (targetAspect) => {
+            if (['16-9', '4-3', 'auto'].includes(targetAspect)) {
+              userAspectSetting.value = targetAspect;
+              showToast(`教師端遠端切換為【${targetAspect}】`);
+            }
+          });
+
           sync.on('state_change', (state) => {
             if (!state) return;
             if (state.stage) currentStage.value = state.stage;
@@ -539,6 +596,7 @@
             if (state.stats) optionStats.value = state.stats;
             if (state.buzzerWinner) buzzerWinnerName.value = state.buzzerWinner;
             if (state.leaderboard) leaderboardData.value = state.leaderboard;
+            if (state.projectorAspect) userAspectSetting.value = state.projectorAspect;
           });
 
           const snap = sync.getStateSnapshot();
@@ -567,10 +625,11 @@
           isCloudOnline,
           toastMessage,
           userAspectSetting,
-          aspectLabel,
-          aspectModeClass,
-          forcedClass,
-          toggleAspectRatio,
+          aspectButtonLabel,
+          activeAspect,
+          activeLayoutClass,
+          forcedFrameClass,
+          cycleAspectRatio,
           isAnswering,
           showStats,
           totalExpectedCount,
