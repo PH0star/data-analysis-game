@@ -7,7 +7,8 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
-  <script src="sync-channel.js?v=3.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="sync-channel.js?v=3.5"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -108,9 +109,17 @@
           <div class="text-xs text-slate-400">房間代碼</div>
           <div class="text-sm md:text-base font-black font-mono tracking-wider text-cyan-300 flex items-center space-x-1.5">
             <span>{{ roomId }}</span>
-            <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-500 font-mono">v3.4-RWD</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-500 font-mono">v3.5</span>
           </div>
         </div>
+
+        <!-- 隨時開啟 QR Code 懸浮視窗 (供遲到或斷線學員中途掃碼) -->
+        <button @click="showQrModal = !showQrModal" 
+                class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 font-bold text-xs flex items-center space-x-1 transition-all active:scale-95 shadow cursor-pointer"
+                title="點擊展開/收合學員加入 QR Code">
+          <span>📱</span>
+          <span class="hidden sm:inline">QR Code</span>
+        </button>
       </div>
     </header>
 
@@ -130,18 +139,58 @@
              ? `請各小組（第 1 ~ ${groupCount} 組）由組長代表以手機連線登入` 
              : `請全體學員以手機掃描或輸入網址加入競賽（預計 ${expectedPlayerCount} 人）` }}
         </p>
-        <div class="bg-slate-900/90 border border-slate-700 p-6 md:p-8 rounded-3xl flex flex-wrap items-center justify-center gap-8 shadow-2xl">
-          <div class="text-left">
-            <div class="text-xs text-slate-400 uppercase tracking-widest">手機連線網址</div>
-            <div class="text-2xl md:text-3xl font-black text-cyan-400 font-mono mt-1">/play.html</div>
-            <div class="text-xs text-slate-400 uppercase tracking-widest mt-3">房間代碼</div>
-            <div class="text-3xl md:text-4xl font-black text-white font-mono mt-1">{{ roomId }}</div>
+        <!-- 核心連線卡片 (含大型高對比 QR Code 與房間資訊) -->
+        <div class="bg-slate-900/90 border border-slate-800 p-6 md:p-8 rounded-3xl flex flex-col md:flex-row items-center justify-center gap-8 shadow-2xl max-w-3xl w-full">
+          
+          <!-- 左側：清晰白底 QR Code -->
+          <div class="flex flex-col items-center space-y-2.5 flex-shrink-0">
+            <div class="p-3 bg-white rounded-2xl shadow-2xl border-4 border-cyan-400/60 flex items-center justify-center">
+              <div id="lobby-qrcode" class="w-44 h-44 flex items-center justify-center overflow-hidden">
+                <img :src="qrCodeApiUrl" alt="學生作答 QR Code" class="w-44 h-44 object-contain rounded-lg">
+              </div>
+            </div>
+            <div class="text-xs font-bold text-cyan-300 flex items-center space-x-1.5 animate-pulse">
+              <span>📱</span>
+              <span>手機掃描立即加入作答</span>
+            </div>
           </div>
-          <div class="hidden sm:block h-24 w-px bg-slate-800"></div>
-          <div class="text-center">
-            <div class="text-xs text-slate-400 uppercase tracking-widest">已連線在線人數</div>
-            <div class="text-4xl md:text-5xl font-black text-emerald-400 font-mono mt-1">{{ connectedCount }}</div>
+
+          <!-- 分隔線 -->
+          <div class="hidden md:block h-48 w-px bg-slate-800"></div>
+          <div class="block md:hidden w-full h-px bg-slate-800"></div>
+
+          <!-- 右側：房間資訊與詳細連線指引 -->
+          <div class="flex flex-col justify-between space-y-4 text-left flex-1 min-w-[240px]">
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-widest font-bold">房間代碼 (Room ID)</div>
+              <div class="text-3xl md:text-4xl font-black font-mono tracking-wider mt-0.5 text-cyan-400">
+                {{ roomId }}
+              </div>
+            </div>
+
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-widest font-bold">手機作答網址 (Web URL)</div>
+              <div class="text-xs md:text-sm font-mono text-slate-200 mt-1 break-all bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 select-all">
+                {{ playPageUrl }}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+              <div>
+                <div class="text-[11px] text-slate-400 font-bold">目前競賽模式</div>
+                <div class="text-xs font-bold text-amber-300 mt-0.5">
+                  {{ roomMode === 'GROUP_REPRESENTATIVE' ? `👥 小組代表制 (${groupCount}組)` : `👤 個人競賽制 (${expectedPlayerCount}人)` }}
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-[11px] text-slate-400 font-bold">已連線在線人數</div>
+                <div class="text-2xl font-black text-emerald-400 font-mono mt-0.5">
+                  {{ connectedCount }} <span class="text-xs font-normal text-slate-400">人/組</span>
+                </div>
+              </div>
+            </div>
           </div>
+
         </div>
       </div>
 
@@ -319,6 +368,23 @@
         const optionStats = ref({ A: 0, B: 0, C: 0, D: 0 });
         const leaderboardData = ref([]);
         const isCloudOnline = ref(false);
+        const showQrModal = ref(false);
+
+        // 動態取得學員端完整絕對路徑
+        const playPageUrl = computed(() => {
+          if (typeof window !== 'undefined') {
+            try {
+              const url = new URL('play.html', window.location.href);
+              return url.href;
+            } catch (e) {}
+          }
+          return 'https://ph0star.github.io/data-analysis-game/play.html';
+        });
+
+        // 產生 QR Code 圖片來源 (高清晰度免額外依賴)
+        const qrCodeApiUrl = computed(() => {
+          return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(playPageUrl.value)}`;
+        });
 
         const isAnswering = computed(() => {
           return currentStage.value === 'QUESTION_ACTIVE' || currentStage.value === 'BUZZER_WINNER';
@@ -421,6 +487,9 @@
           optionStats,
           leaderboardData,
           isCloudOnline,
+          showQrModal,
+          playPageUrl,
+          qrCodeApiUrl,
           isAnswering,
           showStats,
           groupCount,
@@ -435,5 +504,19 @@
       }
     }).mount('#app');
   </script>
+    <!-- QR Code 懸浮彈出視窗 (任何階段均可由右上角點擊查看) -->
+    <div v-if="showQrModal" 
+         @click.self="showQrModal = false"
+         class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-3xl shadow-2xl max-w-sm w-full text-center space-y-4 relative">
+        <button @click="showQrModal = false" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold">✕</button>
+        <h3 class="text-lg font-black text-white">學生手機作答連結</h3>
+        <div class="inline-block p-3 bg-white rounded-2xl shadow-xl border-2 border-cyan-400">
+          <img :src="qrCodeApiUrl" alt="QR Code" class="w-52 h-52 object-contain">
+        </div>
+        <p class="text-xs text-slate-400 font-mono break-all">{{ playPageUrl }}</p>
+        <div class="text-xs font-bold text-cyan-300">房間代碼：{{ roomId }}</div>
+      </div>
+    </div>
 </body>
 </html>
