@@ -173,30 +173,41 @@
         </div>
       </div>
 
-      <!-- 狀態 3: 搶答題專屬過場 (BUZZER_ALERT & BUZZER_WINNER) -->
-      <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center text-center space-y-6 py-12 animate-bounce">
-        <div class="text-6xl md:text-7xl">⚡</div>
-        <h2 class="text-4xl md:text-6xl font-black text-amber-300 tracking-wider">
-          【極速搶答題】
-        </h2>
-        <p class="text-xl md:text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
-      </div>
+      <!-- 狀態 3: 題目進行、極速搶答與結算 (包含 QUESTION_ACTIVE, BUZZER_ALERT, BUZZER_WINNER, STATS, REVEAL) -->
+      <!-- 核心修復：搶答題無論何時皆完整展示題幹與選項，絕不再被空白彈跳卡蓋住！ -->
+      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'BUZZER_ALERT' || currentStage === 'BUZZER_WINNER' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
+           class="max-w-5xl mx-auto w-full space-y-4">
 
-      <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-6 py-12">
-        <div class="text-6xl md:text-7xl">🎉</div>
-        <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-xl font-bold">
-          恭喜搶得優先作答權！
+        <!-- 搶答中動態橫幅 (BUZZER_ALERT) -->
+        <div v-if="currentStage === 'BUZZER_ALERT'" 
+             class="p-4 rounded-2xl bg-gradient-to-r from-amber-500/25 via-amber-600/35 to-amber-500/25 border-2 border-amber-400 text-amber-200 flex items-center justify-between shadow-2xl animate-pulse">
+          <div class="flex items-center space-x-3">
+            <span class="text-3xl">⚡</span>
+            <div>
+              <div class="text-lg md:text-xl font-black text-white tracking-wide">【極速搶答進行中】</div>
+              <div class="text-xs md:text-sm text-amber-300">請看大螢幕思考，先按下手機「搶！」按鈕者獲得獨家作答權！</div>
+            </div>
+          </div>
+          <div class="font-mono text-sm md:text-base font-black bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl shadow">
+            等待搶答中
+          </div>
         </div>
-        <h2 class="text-4xl md:text-6xl font-black text-white">
-          {{ buzzerWinnerName }}
-        </h2>
-        <p class="text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
-      </div>
 
-      <!-- 狀態 4: 題目進行與結算 (QUESTION_ACTIVE / STATS / REVEAL) -->
-      <!-- 緊湊 RWD 佈局：題目與選項緊密相連，空間適度，永不被壓扁 -->
-      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
-           class="max-w-5xl mx-auto w-full space-y-5">
+        <!-- 搶答成功得標者橫幅 (BUZZER_WINNER) -->
+        <div v-else-if="currentStage === 'BUZZER_WINNER'" 
+             class="p-4 rounded-2xl bg-gradient-to-r from-cyan-600/30 via-blue-600/40 to-cyan-600/30 border-2 border-cyan-400 text-white flex items-center justify-between shadow-2xl">
+          <div class="flex items-center space-x-3">
+            <span class="text-4xl animate-bounce">🎉</span>
+            <div>
+              <div class="text-xs md:text-sm font-bold text-cyan-300 uppercase tracking-wider">恭喜搶得優先作答權</div>
+              <div class="text-xl md:text-2xl font-black text-white">{{ buzzerWinnerName }}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-400 font-mono">限時回答中</div>
+            <div class="text-2xl md:text-3xl font-black font-mono text-cyan-300">{{ timeLeft }}s</div>
+          </div>
+        </div>
         
         <!-- 題幹區塊 (背景卡片，自適應字體) -->
         <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 md:p-7 shadow-2xl relative space-y-3">

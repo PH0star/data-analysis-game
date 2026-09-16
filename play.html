@@ -104,13 +104,20 @@
       <!-- 階段 2: 搶答題專屬按鈕 (BUZZER_ALERT) -->
       <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center space-y-6 py-6">
         <div class="text-xs font-bold text-amber-300 uppercase tracking-widest animate-pulse">
-          ⚡ 倒數中！準備搶答
+          ⚡ 請看前方大螢幕題目，準備搶答！
         </div>
         <button @click="hitBuzzer"
-                class="buzzer-circle w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-black text-2xl shadow-2xl flex flex-col items-center justify-center border-4 border-red-400 tap-btn">
+                class="buzzer-circle w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-black text-3xl shadow-2xl flex flex-col items-center justify-center border-4 border-red-400 tap-btn cursor-pointer active:scale-95">
           <span>搶！</span>
-          <span class="text-xs font-normal opacity-80 mt-1">BUZZER</span>
+          <span class="text-xs font-normal opacity-80 mt-1 font-mono">BUZZER</span>
         </button>
+      </div>
+
+      <!-- 階段 2-2: 其他人得標時的等待畫面 -->
+      <div v-else-if="currentStage === 'BUZZER_WINNER' && !canAnswer" class="text-center space-y-4 py-8">
+        <div class="text-5xl">⏳</div>
+        <h3 class="text-xl font-bold text-white">已由 <span class="text-amber-400 font-black">【{{ buzzerWinner }}】</span> 搶得作答權</h3>
+        <p class="text-xs text-slate-400">請看前方大螢幕，等待該組作答與公佈答案！</p>
       </div>
 
       <!-- 階段 3: 答題進行中 (QUESTION_ACTIVE 或 搶答得標者) -->
@@ -167,7 +174,7 @@
 
     <!-- 底部狀態列 -->
     <footer class="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/80">
-      數據分析實戰線上遊戲 • 手機作答端 (v2.2-穩定版)
+      數據分析實戰線上遊戲 • 手機作答端 (v3.1-穩定版)
     </footer>
 
   </div>

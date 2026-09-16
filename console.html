@@ -28,12 +28,15 @@
       <div class="flex items-center space-x-3">
         <span class="text-2xl">🎮</span>
         <div>
-          <h1 class="text-lg font-bold text-white leading-tight flex items-center space-x-2"><span>數據分析遊戲主控台</span><span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v2.2-穩定版</span></h1>
+          <h1 class="text-lg font-bold text-white leading-tight flex items-center space-x-2">
+            <span>數據分析遊戲主控台</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v3.1-穩定版</span>
+          </h1>
           <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
         </div>
       </div>
 
-                  <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
+      <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
       <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
         <button @click="setMode('INDIVIDUAL')" 
                 class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
@@ -45,6 +48,21 @@
                 :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
           👥 小組代表制 (6組長代表)
         </button>
+      </div>
+
+      <!-- 快速功能按鈕群：啟動投影畫面 & 學生端測試 -->
+      <div class="flex items-center space-x-3 text-xs">
+        <a href="projector.html" target="_blank" 
+           class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black flex items-center space-x-1.5 transition-all shadow-lg shadow-cyan-500/20">
+          <span>📺 啟動投影大畫面</span>
+        </a>
+        <a href="play.html" target="_blank" 
+           class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 font-bold flex items-center space-x-1.5 transition-all shadow-sm">
+          <span>📱 開啟學生端測試</span>
+        </a>
+        <div class="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-mono font-bold">
+          <span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '雲端通訊正常' : '連線中...' }} ({{ connectedCount }}人)</span>
+        </div>
       </div>
     </header>
 
@@ -565,6 +583,7 @@
             if (!buzzerWinner.value) {
               buzzerWinner.value = buzzerData.playerName;
               currentStage.value = 'BUZZER_WINNER';
+              timeLeft.value = 10; // 搶答得標後倒數 10 秒作答
               startTimer();
               broadcastState();
             }
