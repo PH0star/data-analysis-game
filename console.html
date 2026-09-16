@@ -30,7 +30,7 @@
         <div>
           <h1 class="text-lg font-bold text-white leading-tight flex items-center space-x-2">
             <span>數據分析遊戲主控台</span>
-            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v3.3-動態人數版</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v3.4-人數組數修復版</span>
           </h1>
           <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
         </div>
@@ -646,6 +646,9 @@
         return {
           roomId,
           roomMode,
+          individualPlayerCount,
+          groupCount,
+          adjustScale,
           currentStage,
           timerDuration,
           timeLeft,
