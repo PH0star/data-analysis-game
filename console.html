@@ -30,30 +30,53 @@
         <div>
           <h1 class="text-lg font-bold text-white leading-tight flex items-center space-x-2">
             <span>數據分析遊戲主控台</span>
-            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v3.1-穩定版</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono font-bold">v3.3-動態人數版</span>
           </h1>
           <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
         </div>
       </div>
 
-      <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
-      <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
-        <button @click="setMode('INDIVIDUAL')" 
-                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-          👤 個人競賽制 (30人)
-        </button>
-        <button @click="setMode('GROUP_REPRESENTATIVE')" 
-                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-          👥 小組代表制 (6組長代表)
-        </button>
+      <!-- 模式切換與動態人數/組數調整器 (v3.3 核心功能) -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+          <button @click="setMode('INDIVIDUAL')" 
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+            👤 個人競賽制
+          </button>
+          <button @click="setMode('GROUP_REPRESENTATIVE')" 
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+            👥 小組代表制
+          </button>
+        </div>
+
+        <!-- 動態人數/組數微調器 -->
+        <div class="flex items-center bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700 text-xs space-x-2 shadow-inner">
+          <span class="text-slate-300 font-bold text-[11px]">
+            {{ roomMode === 'INDIVIDUAL' ? '設定人數:' : '設定組數:' }}
+          </span>
+          <div class="flex items-center space-x-1.5">
+            <button @click="adjustScale(-1)" 
+                    class="w-5 h-5 rounded-md bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center font-bold text-xs active:scale-95 transition-all">
+              -
+            </button>
+            <span class="font-mono font-black text-cyan-300 text-sm px-1 min-w-[20px] text-center">
+              {{ roomMode === 'INDIVIDUAL' ? individualPlayerCount : groupCount }}
+            </span>
+            <span class="text-slate-400 text-[11px]">{{ roomMode === 'INDIVIDUAL' ? '人' : '組' }}</span>
+            <button @click="adjustScale(1)" 
+                    class="w-5 h-5 rounded-md bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center font-bold text-xs active:scale-95 transition-all">
+              +
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 快速功能按鈕群：啟動投影畫面 & 學生端測試 -->
       <div class="flex items-center space-x-3 text-xs">
         <a href="projector.html" target="_blank" 
-           class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black flex items-center space-x-1.5 transition-all shadow-lg shadow-cyan-500/20">
+           class="px-4 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs md:text-sm flex items-center space-x-2 transition-all shadow-lg shadow-cyan-400/40 cursor-pointer border border-cyan-200">
           <span>📺 啟動投影大畫面</span>
         </a>
         <a href="play.html" target="_blank" 
@@ -321,6 +344,8 @@
       setup() {
         const roomId = ref('DA-ROOM-888');
         const roomMode = ref('GROUP_REPRESENTATIVE'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
+        const individualPlayerCount = ref(30); // 教師設定個人模式人數
+        const groupCount = ref(6); // 教師設定小組模式分組數量
         const currentStage = ref('LOBBY');
         const timerDuration = ref(30);
         const timeLeft = ref(30);
@@ -358,7 +383,7 @@
         });
 
         const expectedResponsesCount = computed(() => {
-          return roomMode.value === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          return roomMode.value === 'GROUP_REPRESENTATIVE' ? groupCount.value : individualPlayerCount.value;
         });
 
         const responseProgressPercent = computed(() => {
@@ -401,9 +426,23 @@
           }
         };
 
-        const setMode = (mode) => {
+                const setMode = (mode) => {
           roomMode.value = mode;
-          connectedCount.value = mode === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          broadcastState();
+        };
+
+        const adjustScale = (delta) => {
+          if (roomMode.value === 'INDIVIDUAL') {
+            const next = individualPlayerCount.value + delta;
+            if (next >= 1 && next <= 100) {
+              individualPlayerCount.value = next;
+            }
+          } else {
+            const next = groupCount.value + delta;
+            if (next >= 2 && next <= 20) {
+              groupCount.value = next;
+            }
+          }
           broadcastState();
         };
 
@@ -427,11 +466,14 @@
             D: Math.round(((optionCounts.value.D || 0) / totalResp) * 100)
           };
 
-          // 計算即時排行榜 (支援個人模式與小組模式)
+          // 計算即時排行榜 (支援個人模式與動態 N 組小組模式)
           let dynamicLeaderboard = [];
           if (roomMode.value === 'GROUP_REPRESENTATIVE') {
-            const defaultTeams = ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組'];
-            dynamicLeaderboard = defaultTeams.map(t => ({
+            const teams = [];
+            for (let i = 1; i <= groupCount.value; i++) {
+              teams.push(`第 ${i} 組`);
+            }
+            dynamicLeaderboard = teams.map(t => ({
               name: t,
               score: playerScores.value[t] || 0
             }));
@@ -446,6 +488,8 @@
           const statePayload = {
             stage: currentStage.value,
             mode: roomMode.value,
+            expectedPlayerCount: individualPlayerCount.value,
+            groupCount: groupCount.value,
             question: activeQuestion.value, // 核心修復：僅廣播真正出題的題目，不廣播教師預覽題
             timeLeft: timeLeft.value,
             connectedCount: connectedCount.value,

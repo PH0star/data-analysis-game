@@ -82,8 +82,8 @@
     <!-- 頂部資訊列 (Header) -->
     <header class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-3 flex-shrink-0">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-blue-600/30 text-blue-400 border border-blue-500/30">
-          {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制 (C組模式)' : '👤 個人競賽制' }}
+        <span class="px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase bg-blue-600/30 text-blue-400 border border-blue-500/30 font-mono">
+          {{ roomMode === 'GROUP_REPRESENTATIVE' ? `👥 小組代表制 (共 ${groupCount} 組)` : `👤 個人競賽制 (預計 ${expectedPlayerCount} 人)` }}
         </span>
         <span v-if="currentQuestion" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
           模組：{{ currentQuestion.module }} | {{ currentQuestion.subcategory }}
@@ -127,8 +127,8 @@
         </h1>
         <p class="text-base md:text-xl text-slate-400 max-w-2xl">
           {{ roomMode === 'GROUP_REPRESENTATIVE' 
-             ? '請各小組（第 1 ~ 6 組）由組長代表以手機連線登入' 
-             : '請全體學員以手機掃描或輸入網址加入競賽' }}
+             ? `請各小組（第 1 ~ ${groupCount} 組）由組長代表以手機連線登入` 
+             : `請全體學員以手機掃描或輸入網址加入競賽（預計 ${expectedPlayerCount} 人）` }}
         </p>
         <div class="bg-slate-900/90 border border-slate-700 p-6 md:p-8 rounded-3xl flex flex-wrap items-center justify-center gap-8 shadow-2xl">
           <div class="text-left">
@@ -310,6 +310,8 @@
         const roomMode = ref('GROUP_REPRESENTATIVE');
         const currentStage = ref('LOBBY');
         const currentQuestion = ref(null);
+        const groupCount = ref(6);
+        const expectedPlayerCount = ref(30);
         const timeLeft = ref(30);
         const buzzerWinnerName = ref('');
         const connectedCount = ref(6);
@@ -327,7 +329,7 @@
         });
 
         const totalExpectedCount = computed(() => {
-          return roomMode.value === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          return roomMode.value === 'GROUP_REPRESENTATIVE' ? groupCount.value : expectedPlayerCount.value;
         });
 
         const stageDescription = computed(() => {
@@ -390,6 +392,8 @@
             if (state.question) currentQuestion.value = state.question;
             if (state.timeLeft !== undefined) timeLeft.value = state.timeLeft;
             if (state.mode) roomMode.value = state.mode;
+            if (state.groupCount) groupCount.value = state.groupCount;
+            if (state.expectedPlayerCount) expectedPlayerCount.value = state.expectedPlayerCount;
             if (state.connectedCount !== undefined) connectedCount.value = state.connectedCount;
             if (state.responseCount !== undefined) responseCount.value = state.responseCount;
             if (state.stats) optionStats.value = state.stats;
@@ -419,6 +423,8 @@
           isCloudOnline,
           isAnswering,
           showStats,
+          groupCount,
+          expectedPlayerCount,
           totalExpectedCount,
           stageDescription,
           difficultyBadgeClass,

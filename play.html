@@ -64,14 +64,17 @@
           </p>
         </div>
 
-        <!-- 小組代表模式快速選擇 (C 方案) -->
+        <!-- 小組代表模式快速選擇 (依教師設定動態生成第 1 ~ N 組) -->
         <div v-if="isGroupMode" class="space-y-2">
-          <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
-          <div class="grid grid-cols-3 gap-2">
-            <button v-for="g in ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組']" :key="g"
+          <div class="flex items-center justify-between">
+            <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
+            <span class="text-[11px] font-mono text-cyan-400 font-bold">共 {{ groupCount }} 組</span>
+          </div>
+          <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1">
+            <button v-for="g in availableTeams" :key="g"
                     @click="selectTeam(g)"
-                    class="p-3 rounded-xl border text-xs font-bold transition-all"
-                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
+                    class="p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-95"
+                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
               {{ g }}
             </button>
           </div>
@@ -174,7 +177,7 @@
 
     <!-- 底部狀態列 -->
     <footer class="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/80">
-      數據分析實戰線上遊戲 • 手機作答端 (v3.1-穩定版)
+      數據分析實戰線上遊戲 • 手機作答端 (v3.2-最終穩定版)
     </footer>
 
   </div>
@@ -188,6 +191,15 @@
         const isLoggedIn = ref(false);
         const inputName = ref('');
         const selectedTeamName = ref('第 1 組');
+        const groupCount = ref(6);
+        const availableTeams = computed(() => {
+          const teams = [];
+          const n = groupCount.value || 6;
+          for (let i = 1; i <= n; i++) {
+            teams.push(`第 ${i} 組`);
+          }
+          return teams;
+        });
         const playerName = ref('');
         const playerId = ref('P_' + Math.random().toString(36).substring(2, 8));
         const myScore = ref(0);
@@ -277,6 +289,7 @@
             }
 
             if (state.mode) roomMode.value = state.mode;
+            if (state.groupCount) groupCount.value = state.groupCount;
             if (state.buzzerWinner) buzzerWinner.value = state.buzzerWinner;
 
             // 2. 分數權威同步：直接同步教師端權威計算的分數，並設單次加分防呆
@@ -302,6 +315,8 @@
           playerName,
           myScore,
           isGroupMode,
+          groupCount,
+          availableTeams,
           currentStage,
           currentAnswer,
           submittedOption,
