@@ -339,6 +339,7 @@
         const roomInput = ref(initialRoom);
         const roomMode = ref('INDIVIDUAL'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
         const currentStage = ref('LOBBY');
+        const hasScoredThisQuestion = ref(false); // 防重複計分鎖
         const timerDuration = ref(30);
         const timeLeft = ref(30);
         let timerInterval = null;
@@ -489,6 +490,7 @@
 
         const selectQuestion = (q) => {
           selectedQuestion.value = q;
+          hasScoredThisQuestion.value = false;
         };
 
         const pickRandomQuestion = () => {
@@ -628,6 +630,7 @@
           if (!selectedQuestion.value) return;
           currentResponses.value = {};
           buzzerWinner.value = '';
+          hasScoredThisQuestion.value = false; // 新題目解鎖，允許計分一次
 
           if (selectedQuestion.value.question_type === 'speed_buzzer') {
             currentStage.value = 'BUZZER_ALERT';
@@ -646,11 +649,13 @@
           broadcastState();
         };
 
-        // 揭曉答案並即時計算學員/小組得分
+        // 揭曉答案並即時計算學員/小組得分（防重複累加鎖：每題保證僅計分一次！）
         const revealAnswer = () => {
           currentStage.value = 'REVEAL';
 
-          if (selectedQuestion.value) {
+          // 嚴格檢查：若本道題目已經結算過，絕不重複累計積分與答題次數！
+          if (!hasScoredThisQuestion.value && selectedQuestion.value) {
+            hasScoredThisQuestion.value = true;
             const correctAns = (selectedQuestion.value.answer || '').trim();
             const pts = parseInt(selectedQuestion.value.score, 10) || 100;
 
@@ -702,6 +707,9 @@
                 updatedAt: Date.now()
               });
             }
+            console.log(`[Host] 題目 #${q.id} 結算完成，積分已更新（防重複計分鎖已啟動）`);
+          } else {
+            console.log('[Host] 題目已結算過，維持當前分數不重複累計');
           }
 
           broadcastState();
@@ -731,6 +739,7 @@
         };
 
         const resetToLobby = () => {
+          hasScoredThisQuestion.value = false;
           if (timerInterval) clearInterval(timerInterval);
           currentStage.value = 'LOBBY';
           broadcastState();
@@ -856,6 +865,7 @@
           gameSessionHistory,
           roomMode,
           currentStage,
+          hasScoredThisQuestion,
           timerDuration,
           timeLeft,
           allQuestions,
