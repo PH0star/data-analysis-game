@@ -46,23 +46,31 @@
       transition: all 0.25s ease-out;
     }
 
-    /* 16:9 寬螢幕自適應排版 */
-    .mode-16-9 {
-      padding: 1rem 1.75rem;
-    }
-    .mode-16-9 .options-grid {
+    /* 答案選項 2x2 雙欄宮格佈局與 RWD 自適應 */
+    .options-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 0.85rem;
     }
 
-    /* 4:3 傳統投影排版 (微調緊湊間距) */
+    /* RWD 規則：當螢幕寬度較小（如手機或窄螢幕視窗 < 768px）時，自動轉為單欄縱向排列 */
+    @media (max-width: 768px) {
+      .options-grid {
+        grid-template-columns: 1fr !important;
+        gap: 0.5rem !important;
+      }
+    }
+
+    /* 16:9 寬螢幕自適應外距 */
+    .mode-16-9 {
+      padding: 1rem 1.75rem;
+    }
+
+    /* 4:3 傳統投影排版外距 */
     .mode-4-3 {
       padding: 0.75rem 1.25rem;
     }
     .mode-4-3 .options-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
       gap: 0.65rem;
     }
     .mode-4-3 .option-card {
@@ -212,98 +220,26 @@
       </div>
 
       <!-- 狀態 2: 搶答題專屬過場 (BUZZER_WAIT & BUZZER_WINNER) -->
-      <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center text-center space-y-6 animate-bounce">
+      <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center text-center space-y-4 my-auto animate-bounce">
         <div class="text-6xl">⚡</div>
-        <h2 class="text-5xl font-black text-amber-300 tracking-wider">
+        <h2 class="text-4xl lg:text-5xl font-black text-amber-300 tracking-wider">
           【極速搶答題】
         </h2>
-        <p class="text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
+        <p class="text-xl lg:text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
       </div>
 
-      <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-6">
+      <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-4 my-auto">
         <div class="text-6xl">🎉</div>
-        <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-xl font-bold">
+        <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-lg lg:text-xl font-bold">
           恭喜搶得優先作答權！
         </div>
-        <h2 class="text-5xl font-black text-white">
+        <h2 class="text-4xl lg:text-5xl font-black text-white">
           {{ buzzerWinnerName }}
         </h2>
-        <p class="text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
+        <p class="text-lg lg:text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
       </div>
 
-      <!-- 狀態 3: 標準出題與展示 (QUESTION_ACTIVE / STATS / REVEAL，自適應高彈性) -->
-      <div v-else-if="currentQuestion" class="flex flex-col h-full justify-between overflow-hidden">
-        
-        <!-- 題幹區塊 (Question Box，防過長捲動) -->
-        <div class="question-box bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 lg:p-4 shadow-lg overflow-y-auto max-h-[30vh] flex-shrink-0 mb-2">
-          <div class="flex items-center space-x-2 text-[11px] text-slate-400 mb-1.5 font-mono">
-            <span class="font-bold text-cyan-400">#{{ currentQuestion.id }}</span>
-            <span>•</span>
-            <span class="text-slate-300">{{ currentQuestion.module }}</span>
-            <span>•</span>
-            <span class="text-amber-400 uppercase font-bold">{{ questionTypeLabel(currentQuestion.question_type) }}</span>
-          </div>
-          <h2 class="text-lg lg:text-2xl font-bold leading-snug text-slate-100">
-            {{ currentQuestion.question }}
-          </h2>
-        </div>
-
-        <!-- 四選項宮格 (Options Grid) -->
-        <div class="options-grid flex-1 min-h-0 my-1">
-          <!-- 選項 A -->
-          <div class="option-card opt-a relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all"
-               :class="getOptionFeedbackClass('A')">
-            <span class="opt-a-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">A</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_a }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.A || 0 }}%</span>
-            </div>
-          </div>
-
-          <!-- 選項 B -->
-          <div class="option-card opt-b relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all"
-               :class="getOptionFeedbackClass('B')">
-            <span class="opt-b-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">B</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_b }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.B || 0 }}%</span>
-            </div>
-          </div>
-
-          <!-- 選項 C -->
-          <div class="option-card opt-c relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all"
-               :class="getOptionFeedbackClass('C')">
-            <span class="opt-c-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">C</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_c }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.C || 0 }}%</span>
-            </div>
-          </div>
-
-          <!-- 選項 D -->
-          <div class="option-card opt-d relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all"
-               :class="getOptionFeedbackClass('D')">
-            <span class="opt-d-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">D</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_d }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.D || 0 }}%</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 答案揭曉解析卡片 (Explanation Reveal) -->
-        <div v-if="currentStage === 'REVEAL'" class="bg-emerald-950/50 border border-emerald-500/50 rounded-xl p-2.5 lg:p-3 flex items-start space-x-3 animate-fadeIn flex-shrink-0 mt-2">
-          <div class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-xs uppercase flex-shrink-0">
-            正確答案：{{ currentQuestion.answer }}
-          </div>
-          <p class="text-emerald-200 text-xs lg:text-sm leading-relaxed flex-1">
-            <strong>觀念重點：</strong>{{ currentQuestion.explanation }}
-          </p>
-        </div>
-
-      </div>
-
-      <!-- 狀態 4: 排行榜模式 (LEADERBOARD，真實全場排行) -->
+      <!-- 狀態 3: 排行榜模式 (LEADERBOARD，優先於題目展示判定，解決被題目遮蔽的重大 Bug！) -->
       <div v-else-if="currentStage === 'LEADERBOARD'" class="flex flex-col items-center justify-center h-full space-y-3.5 my-auto">
         <div class="text-center space-y-1">
           <h2 class="text-2xl lg:text-4xl font-black text-amber-300 flex items-center justify-center space-x-2">
@@ -348,6 +284,79 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 狀態 4: 標準出題與展示 (QUESTION_ACTIVE / STATS / REVEAL，僅在答題階段呈現) -->
+      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
+           class="flex flex-col h-full justify-between overflow-hidden">
+        
+        <!-- 題幹區塊 (Question Box，防過長捲動) -->
+        <div class="question-box bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 lg:p-4 shadow-lg overflow-y-auto max-h-[30vh] flex-shrink-0 mb-2">
+          <div class="flex items-center space-x-2 text-[11px] text-slate-400 mb-1.5 font-mono">
+            <span class="font-bold text-cyan-400">#{{ currentQuestion.id }}</span>
+            <span>•</span>
+            <span class="text-slate-300">{{ currentQuestion.module }}</span>
+            <span>•</span>
+            <span class="text-amber-400 uppercase font-bold">{{ questionTypeLabel(currentQuestion.question_type) }}</span>
+          </div>
+          <h2 class="text-lg lg:text-2xl font-bold leading-snug text-slate-100">
+            {{ currentQuestion.question }}
+          </h2>
+        </div>
+
+        <!-- 四選項宮格 (Options Grid，預設 2x2 雙欄，小螢幕自動 RWD 單欄) -->
+        <div class="options-grid flex-1 min-h-0 my-1">
+          <!-- 選項 A -->
+          <div class="option-card opt-a relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+               :class="getOptionFeedbackClass('A')">
+            <span class="opt-a-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">A</span>
+            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_a }}</span>
+            <div v-if="showStats" class="text-right pl-2">
+              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.A || 0 }}%</span>
+            </div>
+          </div>
+
+          <!-- 選項 B -->
+          <div class="option-card opt-b relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+               :class="getOptionFeedbackClass('B')">
+            <span class="opt-b-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">B</span>
+            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_b }}</span>
+            <div v-if="showStats" class="text-right pl-2">
+              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.B || 0 }}%</span>
+            </div>
+          </div>
+
+          <!-- 選項 C -->
+          <div class="option-card opt-c relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+               :class="getOptionFeedbackClass('C')">
+            <span class="opt-c-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">C</span>
+            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_c }}</span>
+            <div v-if="showStats" class="text-right pl-2">
+              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.C || 0 }}%</span>
+            </div>
+          </div>
+
+          <!-- 選項 D -->
+          <div class="option-card opt-d relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+               :class="getOptionFeedbackClass('D')">
+            <span class="opt-d-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">D</span>
+            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_d }}</span>
+            <div v-if="showStats" class="text-right pl-2">
+              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.D || 0 }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 答案揭曉解析卡片 (Explanation Reveal) -->
+        <div v-if="currentStage === 'REVEAL'" class="bg-emerald-950/50 border border-emerald-500/50 rounded-xl p-2.5 lg:p-3 flex items-start space-x-3 animate-fadeIn flex-shrink-0 mt-2">
+          <div class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-xs uppercase flex-shrink-0">
+            正確答案：{{ currentQuestion.answer }}
+          </div>
+          <p class="text-emerald-200 text-xs lg:text-sm leading-relaxed flex-1">
+            <strong>觀念重點：</strong>{{ currentQuestion.explanation }}
+          </p>
+        </div>
+
       </div>
 
     </main>

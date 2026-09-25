@@ -159,19 +159,37 @@
         </div>
       </div>
 
-      <!-- 階段 4: 答案揭曉反饋 (REVEAL) -->
-      <div v-else-if="currentStage === 'REVEAL'" class="text-center space-y-4 py-8">
-        <div class="text-5xl">
+      <!-- 階段 4: 答案揭曉反饋 (REVEAL，明確認證與分數反饋) -->
+      <div v-else-if="currentStage === 'REVEAL'" class="text-center space-y-4 py-6">
+        <div class="text-5xl animate-bounce">
           {{ isMyAnswerCorrect ? '🎉' : '💡' }}
         </div>
-        <h3 class="text-2xl font-black" :class="isMyAnswerCorrect ? 'text-emerald-400' : 'text-slate-200'">
-          {{ isMyAnswerCorrect ? '回答正確！' : '這次選錯囉！' }}
+        <h3 class="text-2xl font-black" :class="isMyAnswerCorrect ? 'text-emerald-400' : 'text-rose-400'">
+          {{ isMyAnswerCorrect ? '恭喜回答正確！' : '這次選錯囉！' }}
         </h3>
+
+        <!-- 作答對比卡片 -->
+        <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2 max-w-xs mx-auto">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">您的選擇：</span>
+            <span class="font-mono font-black text-sm px-2.5 py-0.5 rounded"
+                  :class="isMyAnswerCorrect ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'">
+              選項 {{ submittedOption || '(未作答)' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">標準答案：</span>
+            <span class="font-mono font-black text-sm px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              選項 {{ currentAnswer }}
+            </span>
+          </div>
+          <div v-if="isMyAnswerCorrect" class="text-xs text-emerald-400 font-bold pt-1 border-t border-slate-800/80">
+            +{{ currentPoints }} 分 已加入您的累計總分！
+          </div>
+        </div>
+
         <p class="text-xs text-slate-400">
-          標準答案為：<strong class="text-amber-400 text-sm font-mono">{{ currentAnswer }}</strong>
-        </p>
-        <p class="text-xs text-slate-300 bg-slate-900 border border-slate-800 p-3 rounded-xl leading-relaxed">
-          請抬頭觀看大螢幕的詳細觀念解析！
+          請抬頭觀看大螢幕的詳細觀念解析與戰況排行！
         </p>
       </div>
 
@@ -201,10 +219,12 @@
 
         const roomMode = ref('GROUP_REPRESENTATIVE');
         const currentStage = ref('LOBBY');
+        const currentQuestionId = ref('');
         const currentAnswer = ref('');
         const currentPoints = ref(100);
         const buzzerWinner = ref('');
         const submittedOption = ref('');
+        const hasScoredCurrentQuestion = ref(false);
 
         let sync;
 
@@ -217,7 +237,8 @@
         });
 
         const isMyAnswerCorrect = computed(() => {
-          return submittedOption.value && submittedOption.value === currentAnswer.value;
+          if (!submittedOption.value || !currentAnswer.value) return false;
+          return submittedOption.value.trim().toUpperCase() === currentAnswer.value.trim().toUpperCase();
         });
 
         const selectTeam = (team) => {
@@ -282,26 +303,43 @@
 
           sync.on('state_change', (state) => {
             if (!state) return;
+
+            // 1. 同步階段
             if (state.stage) {
-              // 新題目開始時重置作答選項
-              if (state.stage === 'QUESTION_ACTIVE' || state.stage === 'BUZZER_ALERT') {
+              currentStage.value = state.stage;
+              if (state.stage === 'LOBBY') {
                 submittedOption.value = '';
               }
-              currentStage.value = state.stage;
             }
-            if (state.mode && state.mode !== roomMode.value) {
-              console.log('[Play] 遊戲模式同步為:', state.mode);
-              roomMode.value = state.mode;
-            }
+
+            // 2. 同步題目（只有題目真正切換新 ID 時才重置作答選項，絕不在倒數計時中被洗掉！）
             if (state.question) {
-              currentAnswer.value = state.question.answer;
+              const newQId = state.question.id || '';
+              if (newQId && newQId !== currentQuestionId.value) {
+                currentQuestionId.value = newQId;
+                submittedOption.value = '';
+                hasScoredCurrentQuestion.value = false;
+                console.log('[Play] 載入新題目，重置作答選項:', newQId);
+              }
+              currentAnswer.value = (state.question.answer || '').trim();
               currentPoints.value = state.question.score || 100;
             }
-            if (state.buzzerWinner) buzzerWinner.value = state.buzzerWinner;
 
-            // 結算加分
-            if (state.stage === 'REVEAL' && submittedOption.value && submittedOption.value === currentAnswer.value) {
-              myScore.value += currentPoints.value;
+            // 3. 同步模式與搶答者
+            if (state.mode && state.mode !== roomMode.value) {
+              roomMode.value = state.mode;
+            }
+            if (state.buzzerWinner) {
+              buzzerWinner.value = state.buzzerWinner;
+            }
+
+            // 4. 正確加分結算（每道題目揭曉時只結算加分一次）
+            if (state.stage === 'REVEAL' && !hasScoredCurrentQuestion.value) {
+              if (submittedOption.value && submittedOption.value.trim().toUpperCase() === currentAnswer.value.trim().toUpperCase()) {
+                myScore.value += currentPoints.value;
+                console.log('[Play] 作答正確，累加積分:', currentPoints.value, '總分:', myScore.value);
+              }
+              hasScoredCurrentQuestion.value = true;
             }
           });
         });
