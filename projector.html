@@ -11,8 +11,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js"></script>
-  <script src="sync-channel.js"></script>
+  <script src="firebase-config.js?v=6.1"></script>
+  <script src="sync-channel.js?v=6.1"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -382,10 +382,25 @@
 
       </div>
 
+      <!-- 狀態 5: 狀態異常或無題目時的防卡死救援卡片 (Fallback) -->
+      <div v-else class="flex flex-col items-center justify-center text-center space-y-3 my-auto py-8">
+        <span class="text-4xl animate-pulse">⏳</span>
+        <h3 class="text-xl font-bold text-white">等待教師派發題目中...</h3>
+        <p class="text-xs text-slate-400">當前階段：{{ stageDescription }} ({{ currentStage }})</p>
+        <div class="flex items-center space-x-3 pt-2">
+          <button @click="currentStage = 'LOBBY'" class="px-4 py-1.5 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold shadow transition-all">
+            🏠 切換回大廳等待畫面
+          </button>
+          <button @click="forceSyncFromCloud" class="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
+            ↺ 重新自雲端同步
+          </button>
+        </div>
+      </div>
+
     </main>
 
-    <!-- 底部狀態列 (Footer) -->
-    <footer class="flex items-center justify-between border-t border-slate-800 pt-2.5 text-xs text-slate-500">
+    <!-- 底部狀態列與防卡死緊急切換工具 -->
+    <footer class="flex items-center justify-between border-t border-slate-800 pt-2 text-xs text-slate-500 flex-shrink-0">
       <div class="flex items-center space-x-3">
         <div>狀態：<span class="text-slate-300 font-medium">{{ stageDescription }}</span></div>
         <button @click="exitLeaderboard" v-if="currentStage === 'LEADERBOARD'" class="text-amber-400 hover:text-amber-300 underline font-bold">
@@ -635,10 +650,14 @@
             }
           });
 
-          // 讀取既有狀態快照
+          // 讀取既有狀態快照（開場一律優先維持 LOBBY，避免卡死在舊排行榜快照）
           const snap = sync.getStateSnapshot();
           if (snap) {
-            currentStage.value = snap.stage || 'LOBBY';
+            if (snap.stage && snap.stage !== 'LEADERBOARD') {
+              currentStage.value = snap.stage;
+            } else {
+              currentStage.value = 'LOBBY';
+            }
             if (snap.question) currentQuestion.value = snap.question;
             if (snap.mode) roomMode.value = snap.mode;
           }

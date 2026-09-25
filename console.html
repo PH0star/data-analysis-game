@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js"></script>
-  <script src="sync-channel.js"></script>
+  <script src="firebase-config.js?v=6.1"></script>
+  <script src="sync-channel.js?v=6.1"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -67,10 +67,10 @@
 
       <!-- 快速連結與狀態 -->
       <div class="flex items-center space-x-3 text-xs">
-        <a :href="'projector.html?room=' + roomId" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold flex items-center space-x-1">
+        <a :href="'projector.html?room=' + roomId + '&t=' + Date.now()" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold flex items-center space-x-1">
           <span>📺 開啟投影大螢幕</span>
         </a>
-        <a href="play.html" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 font-bold flex items-center space-x-1">
+        <a :href="'play.html?room=' + roomId + '&t=' + Date.now()" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 font-bold flex items-center space-x-1">
           <span>📱 開啟學生端測試</span>
         </a>
         <div class="px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
