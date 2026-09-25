@@ -11,8 +11,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.2"></script>
-  <script src="sync-channel.js?v=6.2"></script>
+  <script src="firebase-config.js?v=6.3"></script>
+  <script src="sync-channel.js?v=6.3"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -104,6 +104,18 @@
     .opt-b-badge { background-color: #3b82f6; }
     .opt-c-badge { background-color: #f59e0b; }
     .opt-d-badge { background-color: #10b981; }
+
+    /* 觀念教學卡片與大字體加強 (大螢幕清晰易讀優化) */
+    .explanation-card {
+      background: linear-gradient(135deg, rgba(6, 78, 59, 0.95), rgba(15, 23, 42, 0.98));
+      border: 2px solid #34d399;
+      box-shadow: 0 0 35px rgba(16, 185, 129, 0.35);
+    }
+    .explanation-text {
+      font-size: clamp(1.25rem, 1.4vw + 0.65rem, 2.15rem);
+      line-height: 1.55;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    }
 
     /* 正確答案發光強調動畫 */
     .correct-pulse {
@@ -245,16 +257,7 @@
         <p class="text-xl lg:text-2xl text-slate-300">請盯緊大螢幕，按下手機端搶答按鈕！</p>
       </div>
 
-      <div v-else-if="currentStage === 'BUZZER_WINNER'" class="flex flex-col items-center justify-center text-center space-y-4 my-auto">
-        <div class="text-6xl">🎉</div>
-        <div class="px-6 py-2 rounded-full bg-amber-500/30 border border-amber-400 text-amber-300 text-lg lg:text-xl font-bold">
-          恭喜搶得優先作答權！
-        </div>
-        <h2 class="text-4xl lg:text-5xl font-black text-white">
-          {{ buzzerWinnerName }}
-        </h2>
-        <p class="text-lg lg:text-xl text-cyan-400 font-mono">10 秒限時回答中...</p>
-      </div>
+
 
       <!-- 狀態 3: 排行榜模式 (LEADERBOARD，優先於題目展示判定，解決被題目遮蔽的重大 Bug！) -->
       <div v-else-if="currentStage === 'LEADERBOARD'" class="flex flex-col items-center justify-center h-full space-y-3.5 my-auto">
@@ -309,9 +312,25 @@
         </div>
       </div>
 
-      <!-- 狀態 4: 標準出題與展示 (QUESTION_ACTIVE / STATS / REVEAL，僅在答題階段呈現) -->
-      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
+      <!-- 狀態 4: 出題展示與搶答作答 (QUESTION_ACTIVE / BUZZER_WINNER / STATS / REVEAL) -->
+      <div v-else-if="currentQuestion && (currentStage === 'QUESTION_ACTIVE' || currentStage === 'BUZZER_WINNER' || currentStage === 'STATS' || currentStage === 'REVEAL')" 
            class="flex flex-col h-full justify-between overflow-hidden">
+        
+        <!-- 搶答成功榮譽橫幅 (僅在 BUZZER_WINNER 搶答階段呈現，大螢幕同步顯示題目與選項！) -->
+        <div v-if="currentStage === 'BUZZER_WINNER'" 
+             class="bg-gradient-to-r from-amber-500/25 via-amber-400/20 to-amber-500/25 border-2 border-amber-400 rounded-2xl p-3 lg:p-3.5 flex items-center justify-between text-amber-300 font-bold mb-2 shadow-2xl animate-pulse flex-shrink-0">
+          <div class="flex items-center space-x-3 text-base lg:text-2xl">
+            <span class="text-2xl lg:text-3xl">🎉</span>
+            <div>
+              <span class="text-amber-300">恭喜搶得優先作答權：</span>
+              <strong class="text-white font-black text-xl lg:text-3xl ml-1 px-3 py-0.5 rounded-lg bg-amber-500 text-slate-950 shadow">{{ buzzerWinnerName }}</strong>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2 bg-slate-900/90 px-4 py-1.5 rounded-full border border-amber-400 font-mono text-cyan-300 text-sm lg:text-lg">
+            <span>限時作答：</span>
+            <strong class="text-amber-300 text-xl lg:text-2xl font-black">{{ timeLeft }}s</strong>
+          </div>
+        </div>
         
         <!-- 題幹區塊 (Question Box，防過長捲動) -->
         <div class="question-box bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 lg:p-4 shadow-lg overflow-y-auto max-h-[30vh] flex-shrink-0 mb-2">
@@ -370,13 +389,25 @@
           </div>
         </div>
 
-        <!-- 答案揭曉解析卡片 (Explanation Reveal) -->
-        <div v-if="currentStage === 'REVEAL'" class="bg-emerald-950/50 border border-emerald-500/50 rounded-xl p-2.5 lg:p-3 flex items-start space-x-3 animate-fadeIn flex-shrink-0 mt-2">
-          <div class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-xs uppercase flex-shrink-0">
-            正確答案：{{ currentQuestion.answer }}
+        <!-- 答案揭曉解析卡片 (Explanation Reveal) - 觀念教學大字體強化版 -->
+        <div v-if="currentStage === 'REVEAL'" class="explanation-card rounded-2xl p-4 lg:p-5 flex flex-col space-y-2 flex-shrink-0 mt-2.5 max-h-[35vh] overflow-y-auto animate-fadeIn">
+          <div class="flex items-center justify-between border-b border-emerald-500/40 pb-2">
+            <div class="flex items-center space-x-2.5">
+              <span class="px-3.5 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-sm lg:text-xl uppercase shadow-md flex items-center space-x-1.5">
+                <span>✓</span>
+                <span>正確答案：選項 {{ currentQuestion.answer }}</span>
+              </span>
+              <span class="text-emerald-300 font-black text-xs lg:text-base tracking-wide flex items-center space-x-1">
+                <span>💡</span>
+                <span>核心觀念精闢解析</span>
+              </span>
+            </div>
+            <span class="text-xs font-mono text-emerald-400/80 font-bold hidden sm:inline">
+              MODULE: {{ currentQuestion.module }}
+            </span>
           </div>
-          <p class="text-emerald-200 text-xs lg:text-sm leading-relaxed flex-1">
-            <strong>觀念重點：</strong>{{ currentQuestion.explanation }}
+          <p class="explanation-text text-emerald-50 font-bold tracking-wide">
+            {{ currentQuestion.explanation }}
           </p>
         </div>
 

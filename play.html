@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.2"></script>
-  <script src="sync-channel.js?v=6.2"></script>
+  <script src="firebase-config.js?v=6.3"></script>
+  <script src="sync-channel.js?v=6.3"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -156,6 +156,16 @@
                   :class="submittedOption === 'D' ? 'border-white scale-95 ring-4 ring-emerald-400' : 'border-emerald-400/50 opacity-90'">
             D
           </button>
+        </div>
+      </div>
+
+      <!-- 階段 3.5: 搶答題已被他人搶答 (未搶到者等待畫面) -->
+      <div v-else-if="currentStage === 'BUZZER_WINNER' && !canAnswer" class="text-center space-y-4 py-8">
+        <div class="text-5xl">⚡</div>
+        <h3 class="text-xl font-bold text-amber-300">已被【{{ buzzerWinner }}】搶得答題權！</h3>
+        <p class="text-sm text-slate-300">請抬頭注視前方投影大螢幕，觀看作答與題目解析...</p>
+        <div class="inline-block px-3.5 py-1 rounded-full bg-slate-800 border border-amber-500/40 text-xs text-amber-300 font-mono">
+          搶答作答中
         </div>
       </div>
 
