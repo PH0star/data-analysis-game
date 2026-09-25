@@ -367,6 +367,56 @@
         const individualScores = ref({});
         const groupScores = ref(defaultGroupScores());
 
+        // 自動整合同名分身紀錄，將分散的積分與答題次數加總合併（徹底修復斷線重登產生多個同名選手分身Bug！）
+        const consolidateDuplicateScores = (scoresMap) => {
+          const unified = {};
+          Object.values(scoresMap || {}).forEach(item => {
+            if (!item || !item.name) return;
+            const normName = item.name.trim();
+            if (!unified[normName]) {
+              unified[normName] = {
+                id: item.id || normName,
+                name: normName,
+                score: Number(item.score || 0),
+                correctCount: Number(item.correctCount || 0),
+                totalAnswers: Number(item.totalAnswers || 0)
+              };
+            } else {
+              unified[normName].score += Number(item.score || 0);
+              unified[normName].correctCount += Number(item.correctCount || 0);
+              unified[normName].totalAnswers += Number(item.totalAnswers || 0);
+              if (item.id) unified[normName].id = item.id;
+            }
+          });
+          return unified;
+        };
+
+        // 依名稱精確比對現有學員，若已有紀錄則直接綁定原紀錄（同名視為同一人，保留歷史積分）
+        const findOrCreateIndividualEntry = (pId, rawName) => {
+          const name = (rawName || '').trim() || '學員 ' + (pId ? pId.slice(-3) : '888');
+          let existingKey = Object.keys(individualScores.value).find(k => {
+            const entry = individualScores.value[k];
+            return entry && entry.name && entry.name.trim().toLowerCase() === name.toLowerCase();
+          });
+
+          if (existingKey) {
+            if (pId) individualScores.value[existingKey].id = pId;
+            return individualScores.value[existingKey];
+          }
+
+          const key = name; // 以姓名為主要鍵值，避免同名不同id分裂
+          if (!individualScores.value[key]) {
+            individualScores.value[key] = {
+              id: pId || key,
+              name: name,
+              score: 0,
+              correctCount: 0,
+              totalAnswers: 0
+            };
+          }
+          return individualScores.value[key];
+        };
+
         // 依目前模式即時計算排序排行榜
         const leaderboard = computed(() => {
           const scoreMap = roomMode.value === 'GROUP_REPRESENTATIVE' ? groupScores.value : individualScores.value;
@@ -493,7 +543,7 @@
             const saved = await sync.loadRoomData(newRoom);
             if (saved && saved.exists && saved.scores) {
               // 若先前在該房間進行過遊戲，完整還原該房間累積戰報與積分！
-              individualScores.value = saved.scores.individualScores || {};
+              individualScores.value = consolidateDuplicateScores(saved.scores.individualScores || {});
               groupScores.value = saved.scores.groupScores || defaultGroupScores();
               gameSessionHistory.value = saved.history || [];
               if (saved.state && saved.state.mode) {
@@ -618,18 +668,8 @@
                   }
                 }
               } else {
-                // 個人競賽模式：純數值計分
-                const pId = r.playerId || r.playerName;
-                if (!individualScores.value[pId]) {
-                  individualScores.value[pId] = {
-                    id: pId,
-                    name: r.playerName || '學員',
-                    score: 0,
-                    correctCount: 0,
-                    totalAnswers: 0
-                  };
-                }
-                const p = individualScores.value[pId];
+                // 個人競賽模式：依姓名合併記分，保證重登斷線不分裂
+                const p = findOrCreateIndividualEntry(r.playerId, r.playerName);
                 p.totalAnswers = Number(p.totalAnswers || 0) + 1;
                 if (isCorrect) {
                   p.score = Number(p.score || 0) + pts;
@@ -753,7 +793,7 @@
             try {
               const saved = await sync.loadRoomData(roomId.value);
               if (saved && saved.exists && saved.scores) {
-                individualScores.value = saved.scores.individualScores || {};
+                individualScores.value = consolidateDuplicateScores(saved.scores.individualScores || {});
                 groupScores.value = saved.scores.groupScores || defaultGroupScores();
                 gameSessionHistory.value = saved.history || [];
                 if (saved.state && saved.state.mode) roomMode.value = saved.state.mode;
@@ -771,39 +811,24 @@
             isFirebaseActive.value = true;
           });
 
-          // 監聽線上真實學生人數並自動登錄至個人名冊
+          // 監聽線上真實學生人數並自動登錄至個人名冊（同名自動合併，防分身）
           sync.on('players_update', ({ count, players }) => {
             connectedCount.value = count;
             if (roomMode.value === 'INDIVIDUAL' && players) {
               Object.values(players).forEach(p => {
-                if (p && p.id && !individualScores.value[p.id]) {
-                  individualScores.value[p.id] = {
-                    id: p.id,
-                    name: p.name || '學員',
-                    score: 0,
-                    correctCount: 0,
-                    totalAnswers: 0
-                  };
+                if (p && (p.name || p.id)) {
+                  findOrCreateIndividualEntry(p.id, p.name);
                 }
               });
             }
             broadcastState();
           });
 
-          // 監聽學生端作答並自動建檔
+          // 監聽學生端作答並自動建檔（同名自動合併，防分身）
           sync.on('submit_answer', (answerData) => {
             currentResponses.value[answerData.playerId] = answerData;
             if (roomMode.value === 'INDIVIDUAL') {
-              const pId = answerData.playerId;
-              if (!individualScores.value[pId]) {
-                individualScores.value[pId] = {
-                  id: pId,
-                  name: answerData.playerName || '學員',
-                  score: 0,
-                  correctCount: 0,
-                  totalAnswers: 0
-                };
-              }
+              findOrCreateIndividualEntry(answerData.playerId, answerData.playerName);
             }
             broadcastState();
           });

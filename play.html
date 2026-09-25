@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.3"></script>
-  <script src="sync-channel.js?v=6.3"></script>
+  <script src="firebase-config.js?v=6.4"></script>
+  <script src="sync-channel.js?v=6.4"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -162,7 +162,7 @@
       <!-- 階段 3.5: 搶答題已被他人搶答 (未搶到者等待畫面) -->
       <div v-else-if="currentStage === 'BUZZER_WINNER' && !canAnswer" class="text-center space-y-4 py-8">
         <div class="text-5xl">⚡</div>
-        <h3 class="text-xl font-bold text-amber-300">已被【{{ buzzerWinner }}】搶得答題權！</h3>
+        <h3 class="text-xl font-bold text-amber-300">已被【{{ buzzerWinner || "其他學員" }}】搶得答題權！</h3>
         <p class="text-sm text-slate-300">請抬頭注視前方投影大螢幕，觀看作答與題目解析...</p>
         <div class="inline-block px-3.5 py-1 rounded-full bg-slate-800 border border-amber-500/40 text-xs text-amber-300 font-mono">
           搶答作答中
@@ -218,13 +218,27 @@
     createApp({
       setup() {
         const urlParams = new URLSearchParams(window.location.search);
-        const roomId = ref(urlParams.get('room') || 'DA-ROOM-888');
+        const roomId = ref((urlParams.get('room') || 'DA-ROOM-888').toUpperCase());
         const isFirebaseActive = ref(false);
         const isLoggedIn = ref(false);
-        const inputName = ref('');
+
+        // 讀取持久化學員身分（斷線/誤關瀏覽器重開時維持同一學員身分與同一 playerId，徹底杜絕積分分裂！）
+        let savedPlayerId = '';
+        let savedPlayerName = '';
+        try {
+          savedPlayerId = localStorage.getItem('dataquest_player_id') || '';
+          savedPlayerName = localStorage.getItem('dataquest_player_name') || '';
+        } catch (e) {}
+
+        if (!savedPlayerId) {
+          savedPlayerId = 'P_' + Math.random().toString(36).substring(2, 8);
+          try { localStorage.setItem('dataquest_player_id', savedPlayerId); } catch (e) {}
+        }
+
+        const inputName = ref(savedPlayerName);
         const selectedTeamName = ref('第 1 組');
-        const playerName = ref('');
-        const playerId = ref('P_' + Math.random().toString(36).substring(2, 8));
+        const playerName = ref(savedPlayerName);
+        const playerId = ref(savedPlayerId);
         const myScore = ref(0);
 
         const roomMode = ref('GROUP_REPRESENTATIVE');
@@ -259,6 +273,11 @@
           roomId.value = roomId.value.trim().toUpperCase() || 'DA-ROOM-888';
           playerName.value = isGroupMode.value ? selectedTeamName.value : (inputName.value.trim() || '學員 ' + playerId.value.slice(-3));
           isLoggedIn.value = true;
+          try {
+            localStorage.setItem('dataquest_player_name', playerName.value);
+            localStorage.setItem('dataquest_player_id', playerId.value);
+            localStorage.setItem('dataquest_last_room', roomId.value);
+          } catch (e) {}
           if (sync) {
             if (sync.switchRoom) sync.switchRoom(roomId.value);
             if (sync.registerPlayer) {
@@ -296,6 +315,13 @@
           });
           sync.on('firebase_connected', () => {
             isFirebaseActive.value = true;
+          });
+
+          // 即時監聽搶答結果，秒級更新得標者姓名
+          sync.on('buzzer_hit', (buzzerData) => {
+            if (buzzerData && buzzerData.playerName) {
+              buzzerWinner.value = buzzerData.playerName;
+            }
           });
 
           // 監聽教師換房廣播（新房間重置本機分數與狀態）
@@ -372,12 +398,14 @@
           inputName,
           selectedTeamName,
           playerName,
+          playerId,
           myScore,
           isGroupMode,
           currentStage,
           currentAnswer,
           submittedOption,
           canAnswer,
+          buzzerWinner,
           isMyAnswerCorrect,
           selectTeam,
           doLogin,

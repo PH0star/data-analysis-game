@@ -135,12 +135,11 @@ class GameSync {
       }
     });
 
-    // (B) 監聽舊房間重定向訊號（嚴格防死循環：僅限學員端、時效 15 秒內、且目標房不可為自身）
+    // (B) 監聽舊房間重定向訊號（防死循環：時效 15 秒內、且目標房不可為自身）
     roomRef.child('redirect').on('value', (snapshot) => {
       const redirectData = snapshot.val();
       if (redirectData && redirectData.newRoomId && redirectData.newRoomId !== this.roomId) {
-        // 投影端不自動跳房，以網址房號為準；學員端僅接收15秒內有效換房訊號
-        if (this.role === 'player') {
+        if (this.role !== 'host') {
           const now = Date.now();
           const ts = redirectData.timestamp || now;
           if (Math.abs(now - ts) < 15000) {
@@ -307,15 +306,21 @@ class GameSync {
         }
       }
 
-      // (B) 房間重定向廣播 (Host -> 學員端遷移，並銷毀目標房間殘留指引，防雙向乒乓死循環)
+      // (B) 房間重定向廣播 (Host -> 投影與學員端遷移，並自動銷毀殘留指引)
       else if (type === 'room_redirect') {
         if (sanitizedData && sanitizedData.oldRoomId) {
-          // 清除新房間可能殘留的反向重定向
           this.firebaseDb.ref(`rooms/${sanitizedData.newRoomId}/redirect`).remove();
           this.firebaseDb.ref(`rooms/${sanitizedData.oldRoomId}/redirect`).set({
             newRoomId: sanitizedData.newRoomId,
+            mode: sanitizedData.mode || 'INDIVIDUAL',
             timestamp: firebase.database.ServerValue.TIMESTAMP
           });
+          // 6 秒後自動銷毀舊房間重定向，徹底防止永遠殘留
+          setTimeout(() => {
+            if (this.firebaseDb) {
+              this.firebaseDb.ref(`rooms/${sanitizedData.oldRoomId}/redirect`).remove();
+            }
+          }, 6000);
         }
       }
 

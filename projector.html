@@ -11,8 +11,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.3"></script>
-  <script src="sync-channel.js?v=6.3"></script>
+  <script src="firebase-config.js?v=6.4"></script>
+  <script src="sync-channel.js?v=6.4"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -660,7 +660,22 @@
             if (state.leaderboard) leaderboardData.value = state.leaderboard;
           });
 
-          // [v6.2] 投影端嚴格鎖定當前 URL 房號，不被重定向訊號干擾，保證畫面 100% 穩定不閃爍
+          // 監聽教師主控台換房重定向指示（防震盪跳房保護，平滑跟隨教師切換新房間）
+          let lastSwitchedRoomTime = 0;
+          sync.on('room_redirect', ({ newRoomId, mode }) => {
+            const now = Date.now();
+            if (newRoomId && newRoomId !== roomId.value && (now - lastSwitchedRoomTime > 2500)) {
+              console.log('[Projector] 📺 收到教師換房指示，投影大螢幕同步遷移至新房間:', newRoomId);
+              lastSwitchedRoomTime = now;
+              roomId.value = newRoomId;
+              if (mode) roomMode.value = mode;
+              sync.switchRoom(newRoomId);
+              try {
+                window.history.replaceState({}, '', `?room=${newRoomId}`);
+              } catch (e) {}
+              setTimeout(renderQrCode, 200);
+            }
+          });
 
           // 監聽大廳模式或房間變更時重新渲染 QR Code
           watch([currentStage, roomId, roomMode], ([st]) => {
