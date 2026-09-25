@@ -340,9 +340,11 @@
               buzzerWinner.value = state.buzzerWinner;
             }
 
-            // 4. 與後端官方排行榜「權威同步」累計積分（保證學員端介面分數與大螢幕戰況榜 100% 精確一致！）
-            if (state.leaderboard && Array.isArray(state.leaderboard) && playerName.value) {
-              const myEntry = state.leaderboard.find(p => p.name === playerName.value);
+            // 4. 與後端官方排行榜「權威同步」累計積分（支援陣列或 Firebase 物件格式）
+            if (state.leaderboard && playerName.value) {
+              const raw = state.leaderboard;
+              const lbList = Array.isArray(raw) ? raw : Object.values(raw);
+              const myEntry = lbList.find(p => p && p.name === playerName.value);
               if (myEntry) {
                 myScore.value = Number(myEntry.score || 0);
               } else if (state.stage === 'LOBBY') {

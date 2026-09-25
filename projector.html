@@ -496,7 +496,11 @@
         };
 
         const sortedLeaderboard = computed(() => {
-          return [...leaderboardData.value]
+          const raw = leaderboardData.value;
+          if (!raw) return [];
+          const list = Array.isArray(raw) ? raw : Object.values(raw);
+          return list
+            .filter(p => p && typeof p === 'object')
             .map(p => ({
               ...p,
               score: Number(p.score || 0),

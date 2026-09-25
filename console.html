@@ -267,34 +267,42 @@
             </button>
           </div>
 
-          <!-- 主控動作按鈕群 -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2">
+          <!-- 主控動作按鈕群 (支援排行榜切換與一鍵下一題) -->
+          <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 pt-2">
             <!-- 動作 1: 發送出題 -->
             <button @click="dispatchQuestion" 
                     class="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
               <span class="text-lg">🚀</span>
-              <span>發送出題 (開始)</span>
+              <span>發送本題出題</span>
             </button>
 
             <!-- 動作 2: 截止作答 / 統計 -->
             <button @click="showDistribution" 
                     class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex flex-col items-center justify-center space-y-1">
               <span class="text-lg">📊</span>
-              <span>截止 & 投影長條圖</span>
+              <span>截止 & 投影選情</span>
             </button>
 
             <!-- 動作 3: 揭曉答案與解析 -->
             <button @click="revealAnswer" 
                     class="p-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
               <span class="text-lg">💡</span>
-              <span>揭曉答案與解析</span>
+              <span>揭曉答案與計分</span>
             </button>
 
-            <!-- 動作 4: 投影排行榜 -->
-            <button @click="showLeaderboard" 
-                    class="p-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
+            <!-- 動作 4: 投影排行榜 (支援開關切換) -->
+            <button @click="toggleLeaderboard" 
+                    class="p-3 rounded-xl font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1 transition-all"
+                    :class="currentStage === 'LEADERBOARD' ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-300' : 'bg-amber-600 hover:bg-amber-500 text-white'">
               <span class="text-lg">🏆</span>
-              <span>投影戰況排行榜</span>
+              <span>{{ currentStage === 'LEADERBOARD' ? '✖ 關閉排行榜' : '投影戰況排行榜' }}</span>
+            </button>
+
+            <!-- 動作 5: 一鍵下一題 -->
+            <button @click="nextQuestion" 
+                    class="p-3 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
+              <span class="text-lg">➡️</span>
+              <span>下一題 (直接出題)</span>
             </button>
           </div>
 
@@ -654,10 +662,27 @@
           broadcastState();
         };
 
-        // 投影排行榜
-        const showLeaderboard = () => {
-          currentStage.value = 'LEADERBOARD';
+        const previousStage = ref('REVEAL');
+
+        // 投影或關閉排行榜 (可切換開關，隨時返回出題或解析畫面)
+        const toggleLeaderboard = () => {
+          if (currentStage.value === 'LEADERBOARD') {
+            currentStage.value = previousStage.value || 'REVEAL';
+          } else {
+            previousStage.value = currentStage.value;
+            currentStage.value = 'LEADERBOARD';
+          }
           broadcastState();
+        };
+
+        // 一鍵出下一題 (自動依序選題並發送，立刻離開排行榜進入新題目)
+        const nextQuestion = () => {
+          const pool = filteredQuestions.value;
+          if (!pool.length) return;
+          const currentIdx = pool.findIndex(q => selectedQuestion.value && q.id === selectedQuestion.value.id);
+          const nextIdx = (currentIdx + 1 < pool.length) ? (currentIdx + 1) : 0;
+          selectedQuestion.value = pool[nextIdx];
+          dispatchQuestion();
         };
 
         const resetToLobby = () => {
@@ -816,7 +841,8 @@
           dispatchQuestion,
           showDistribution,
           revealAnswer,
-          showLeaderboard,
+          toggleLeaderboard,
+          nextQuestion,
           resetToLobby,
           exportResultsToCSV
         };
