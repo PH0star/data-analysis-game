@@ -11,8 +11,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.6"></script>
-  <script src="sync-channel.js?v=6.6"></script>
+  <script src="firebase-config.js?v=6.7"></script>
+  <script src="sync-channel.js?v=6.7"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -212,7 +212,7 @@
         <div class="inline-flex items-center px-5 py-1.5 rounded-xl text-xs lg:text-sm font-black tracking-wide shadow-md border transition-all"
              :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600/30 text-purple-200 border-purple-500/60' : 'bg-blue-600/30 text-blue-200 border-blue-500/60'">
           <span class="text-base mr-2">{{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥' : '👤' }}</span>
-          <span>{{ roomMode === 'GROUP_REPRESENTATIVE' ? '目前遊戲模式：【小組代表制】（請各組長代表掃碼連線）' : '目前遊戲模式：【個人競賽制】（全體學員以手機各自掃碼參賽）' }}</span>
+          <span>{{ roomMode === 'GROUP_REPRESENTATIVE' ? `目前模式：【小組代表制】（共 ${groupCount} 組，組長代表參賽）` : `目前模式：【個人競賽制】（預期 ${targetStudentCount} 人，全員手機作答）` }}</span>
         </div>
 
         <div class="bg-slate-900/90 border border-slate-700 p-4 lg:p-5 rounded-2xl flex flex-wrap items-center justify-center gap-6 lg:gap-8 shadow-2xl max-w-3xl">
@@ -268,7 +268,7 @@
             <span>🏆</span>
           </h2>
           <p class="text-xs text-slate-400 font-bold">
-            {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制（共 6 組戰況）' : '👤 個人競賽制即時排行' }}
+            {{ roomMode === 'GROUP_REPRESENTATIVE' ? `👥 小組代表制（共 ${groupCount} 組戰況）` : `👤 個人競賽制即時排行` }}
           </p>
           <!-- 投影端緊急退出按鈕 -->
           <button @click="exitLeaderboard" 
@@ -458,6 +458,8 @@
         const roomMode = ref('INDIVIDUAL'); // 預設個人競賽
         const currentStage = ref('LOBBY'); // LOBBY, QUESTION_ACTIVE, BUZZER_ALERT, BUZZER_WINNER, STATS, REVEAL, LEADERBOARD
         const currentQuestion = ref(null);
+        const targetStudentCount = ref(30);
+        const groupCount = ref(6);
         const timeLeft = ref(30);
         const buzzerWinnerName = ref('');
         const connectedCount = ref(6);
@@ -532,7 +534,7 @@
         });
 
         const totalExpectedCount = computed(() => {
-          return roomMode.value === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          return roomMode.value === 'GROUP_REPRESENTATIVE' ? (groupCount.value || 6) : (targetStudentCount.value || 30);
         });
 
         const stageDescription = computed(() => {
@@ -653,6 +655,8 @@
               console.log('[Projector] 模式同步更新為:', state.mode);
               roomMode.value = state.mode;
             }
+            if (state.targetStudentCount) targetStudentCount.value = state.targetStudentCount;
+            if (state.groupCount) groupCount.value = state.groupCount;
             if (state.connectedCount !== undefined) connectedCount.value = state.connectedCount;
             if (state.responseCount !== undefined) responseCount.value = state.responseCount;
             if (state.stats) optionStats.value = state.stats;
@@ -700,6 +704,8 @@
           roomId,
           roomMode,
           currentStage,
+          targetStudentCount,
+          groupCount,
           currentQuestion,
           timeLeft,
           buzzerWinnerName,

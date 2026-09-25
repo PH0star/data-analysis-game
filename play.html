@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.6"></script>
-  <script src="sync-channel.js?v=6.6"></script>
+  <script src="firebase-config.js?v=6.7"></script>
+  <script src="sync-channel.js?v=6.7"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -79,11 +79,11 @@
         <!-- 小組代表模式快速選擇 (C 方案) -->
         <div v-if="isGroupMode" class="space-y-2">
           <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
-          <div class="grid grid-cols-3 gap-2">
-            <button v-for="g in ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組']" :key="g"
+          <div class="grid gap-2" :class="availableGroups.length > 6 ? 'grid-cols-4 sm:grid-cols-4' : 'grid-cols-3'">
+            <button v-for="g in availableGroups" :key="g"
                     @click="selectTeam(g)"
-                    class="p-3 rounded-xl border text-xs font-bold transition-all"
-                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
+                    class="p-2.5 sm:p-3 rounded-xl border text-xs font-bold transition-all"
+                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white shadow' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
               {{ g }}
             </button>
           </div>
@@ -245,6 +245,16 @@
 
         const roomMode = ref('GROUP_REPRESENTATIVE');
         const currentStage = ref('LOBBY');
+        const groupCount = ref(6);
+
+        const availableGroups = computed(() => {
+          const count = Math.max(2, Math.min(20, Number(groupCount.value) || 6));
+          const list = [];
+          for (let i = 1; i <= count; i++) {
+            list.push(`第 ${i} 組`);
+          }
+          return list;
+        });
         const currentQuestionId = ref('');
         const currentAnswer = ref('');
         const currentPoints = ref(100);
@@ -374,6 +384,9 @@
             if (state.mode && state.mode !== roomMode.value) {
               roomMode.value = state.mode;
             }
+            if (state.groupCount) {
+              groupCount.value = Number(state.groupCount);
+            }
             if (state.buzzerWinner) {
               buzzerWinner.value = state.buzzerWinner;
             }
@@ -399,6 +412,8 @@
           isLoggedIn,
           inputName,
           selectedTeamName,
+          groupCount,
+          availableGroups,
           playerName,
           playerId,
           myScore,

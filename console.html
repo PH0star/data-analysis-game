@@ -146,7 +146,7 @@
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-bold text-slate-200">📊 即時作答進度</h2>
             <span class="font-mono text-sm font-bold text-cyan-400">
-              {{ Object.keys(currentResponses).length }} / {{ expectedResponsesCount }} 人已交卷
+              {{ Object.keys(currentResponses).length }} / {{ expectedResponsesCount }} {{ roomMode === "GROUP_REPRESENTATIVE" ? "組已交卷" : "人已交卷" }}
             </span>
           </div>
 
@@ -340,6 +340,8 @@
         const roomInput = ref(initialRoom);
         const roomMode = ref('INDIVIDUAL'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
         const currentStage = ref('LOBBY');
+        const targetStudentCount = ref(30); // 預設個人賽預期 30 人
+        const groupCount = ref(6);          // 預設小組賽 6 組
         // 每題專屬 Round Token 與已結算集合（雙重保險防重複計分）
         const activeRoundToken = ref('');
         const completedRoundTokens = ref(new Set());
@@ -360,15 +362,22 @@
         const isFirebaseActive = ref(false);
         const gameSessionHistory = ref([]);
 
-        // 產生預設小組空白積分表
-        const defaultGroupScores = () => ({
-          '第 1 組': { name: '第 1 組', score: 0, correctCount: 0, totalAnswers: 0 },
-          '第 2 組': { name: '第 2 組', score: 0, correctCount: 0, totalAnswers: 0 },
-          '第 3 組': { name: '第 3 組', score: 0, correctCount: 0, totalAnswers: 0 },
-          '第 4 組': { name: '第 4 組', score: 0, correctCount: 0, totalAnswers: 0 },
-          '第 5 組': { name: '第 5 組', score: 0, correctCount: 0, totalAnswers: 0 },
-          '第 6 組': { name: '第 6 組', score: 0, correctCount: 0, totalAnswers: 0 }
-        });
+        // 依組別數量動態產生或保留小組積分表
+        const createGroupScores = (count, existing = {}) => {
+          const n = Math.max(2, Math.min(20, Number(count) || 6));
+          const result = {};
+          for (let i = 1; i <= n; i++) {
+            const gName = `第 ${i} 組`;
+            if (existing[gName]) {
+              result[gName] = existing[gName];
+            } else {
+              result[gName] = { name: gName, score: 0, correctCount: 0, totalAnswers: 0 };
+            }
+          }
+          return result;
+        };
+
+        const defaultGroupScores = () => createGroupScores(groupCount.value);
 
         // 真實動態積分榜（個人模式與小組模式獨立儲存）
         const individualScores = ref({});
@@ -445,6 +454,8 @@
               sync.emit('save_scores', {
                 individualScores: individualScores.value,
                 groupScores: groupScores.value,
+                targetStudentCount: targetStudentCount.value,
+                groupCount: groupCount.value,
                 updatedAt: Date.now()
               });
             }
@@ -463,7 +474,9 @@
         });
 
         const expectedResponsesCount = computed(() => {
-          return roomMode.value === 'GROUP_REPRESENTATIVE' ? 6 : 30;
+          return roomMode.value === 'GROUP_REPRESENTATIVE' 
+            ? Math.max(2, groupCount.value || 6) 
+            : Math.max(1, targetStudentCount.value || 30);
         });
 
         const responseProgressPercent = computed(() => {
@@ -504,6 +517,34 @@
             const r = Math.floor(Math.random() * pool.length);
             selectedQuestion.value = pool[r];
           }
+        };
+
+        const setTargetStudentCount = (val) => {
+          targetStudentCount.value = Math.max(1, Math.min(300, Number(val) || 30));
+          onSettingsChange();
+        };
+
+        const setGroupCount = (val) => {
+          groupCount.value = Math.max(2, Math.min(20, Number(val) || 6));
+          onGroupCountChange();
+        };
+
+        const onSettingsChange = () => {
+          broadcastState();
+          if (sync && sync.emit) {
+            sync.emit('save_scores', {
+              individualScores: individualScores.value,
+              groupScores: groupScores.value,
+              targetStudentCount: targetStudentCount.value,
+              groupCount: groupCount.value,
+              updatedAt: Date.now()
+            });
+          }
+        };
+
+        const onGroupCountChange = () => {
+          groupScores.value = createGroupScores(groupCount.value, groupScores.value);
+          onSettingsChange();
         };
 
         const setMode = (mode) => {
@@ -551,7 +592,9 @@
             if (saved && saved.exists && saved.scores) {
               // 若先前在該房間進行過遊戲，完整還原該房間累積戰報與積分！
               individualScores.value = consolidateDuplicateScores(saved.scores.individualScores || {});
-              groupScores.value = saved.scores.groupScores || defaultGroupScores();
+              if (saved.scores.groupCount) groupCount.value = Number(saved.scores.groupCount);
+              if (saved.scores.targetStudentCount) targetStudentCount.value = Number(saved.scores.targetStudentCount);
+              groupScores.value = createGroupScores(groupCount.value, saved.scores.groupScores || {});
               gameSessionHistory.value = saved.history || [];
               if (saved.state && saved.state.mode) {
                 roomMode.value = saved.state.mode;
@@ -608,7 +651,9 @@
             responseCount: Object.keys(currentResponses.value).length,
             stats: stats,
             buzzerWinner: buzzerWinner.value,
-            leaderboard: leaderboard.value
+            leaderboard: leaderboard.value,
+            targetStudentCount: targetStudentCount.value,
+            groupCount: groupCount.value
           };
 
           sync.emit('state_change', statePayload);
@@ -727,6 +772,8 @@
               sync.emit('save_scores', {
                 individualScores: individualScores.value,
                 groupScores: groupScores.value,
+                targetStudentCount: targetStudentCount.value,
+                groupCount: groupCount.value,
                 updatedAt: Date.now()
               });
             }
@@ -823,7 +870,9 @@
               const saved = await sync.loadRoomData(roomId.value);
               if (saved && saved.exists && saved.scores) {
                 individualScores.value = consolidateDuplicateScores(saved.scores.individualScores || {});
-                groupScores.value = saved.scores.groupScores || defaultGroupScores();
+                if (saved.scores.groupCount) groupCount.value = Number(saved.scores.groupCount);
+                if (saved.scores.targetStudentCount) targetStudentCount.value = Number(saved.scores.targetStudentCount);
+                groupScores.value = createGroupScores(groupCount.value, saved.scores.groupScores || {});
                 gameSessionHistory.value = saved.history || [];
                 if (saved.state && saved.state.mode) roomMode.value = saved.state.mode;
               }
@@ -885,6 +934,12 @@
           gameSessionHistory,
           roomMode,
           currentStage,
+          targetStudentCount,
+          groupCount,
+          setTargetStudentCount,
+          setGroupCount,
+          onSettingsChange,
+          onGroupCountChange,
           hasCurrentRoundBeenScored,
           timerDuration,
           timeLeft,
