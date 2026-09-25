@@ -133,8 +133,13 @@
 
       <!-- 右側房間資訊與比例切換鈕 -->
       <div class="flex items-center space-x-3">
+        <!-- 即時模式提示徽章 -->
+        <span class="px-3 py-1 rounded-full text-xs font-bold transition-all shadow border"
+              :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-900/80 text-purple-200 border-purple-400' : 'bg-blue-900/80 text-blue-200 border-blue-400'">
+          {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制 (第1~6組)' : '👤 全員個人競賽制' }}
+        </span>
         <div class="text-right">
-          <div class="text-xs text-slate-400">房間代碼</div>
+          <div class="text-[10px] text-slate-400 uppercase tracking-widest">房間代碼</div>
           <div class="text-base font-black font-mono tracking-wider text-cyan-300">{{ roomId }}</div>
         </div>
         <!-- 16:9 / 4:3 比例切換標籤 (支援自動與手動) -->
@@ -157,11 +162,11 @@
         <h1 class="text-4xl lg:text-5xl font-black tracking-tight text-white">
           數據分析實戰互動遊戲
         </h1>
-        <p class="text-lg text-slate-400 max-w-2xl">
-          {{ roomMode === 'GROUP_REPRESENTATIVE' 
-             ? '請各小組（第 1 ~ 6 組）由組長代表以手機連線登入' 
-             : '請全體學員以手機掃描或輸入網址加入競賽' }}
-        </p>
+        <div class="inline-flex items-center px-6 py-2.5 rounded-2xl text-base font-black tracking-wide shadow-xl border transition-all"
+             :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600/30 text-purple-200 border-purple-500/60' : 'bg-blue-600/30 text-blue-200 border-blue-500/60'">
+          <span class="text-xl mr-2.5">{{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥' : '👤' }}</span>
+          <span>{{ roomMode === 'GROUP_REPRESENTATIVE' ? '目前遊戲模式：【小組代表制】（請各組長代表掃碼連線）' : '目前遊戲模式：【個人競賽制】（全體學員以手機各自掃碼參賽）' }}</span>
+        </div>
         <div class="bg-slate-900/90 border border-slate-700 p-6 rounded-2xl flex flex-wrap items-center justify-center gap-8 shadow-2xl max-w-4xl">
           <!-- QR Code 容器 -->
           <div class="flex flex-col items-center bg-white p-3 rounded-xl shadow-inner">
@@ -326,7 +331,7 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+    const { createApp, ref, computed, watch, onMounted, onUnmounted } = Vue;
 
     createApp({
       setup() {
@@ -452,16 +457,29 @@
           container.innerHTML = '';
           const fullJoinUrl = `${window.location.origin}${window.location.pathname.replace('projector.html', 'play.html')}?room=${roomId.value}`;
           joinUrl.value = fullJoinUrl;
-          if (typeof QRCode !== 'undefined') {
-            new QRCode(container, {
-              text: fullJoinUrl,
-              width: 144,
-              height: 144,
-              colorDark: '#0f172a',
-              colorLight: '#ffffff',
-              correctLevel: QRCode.CorrectLevel.M
-            });
+          
+          try {
+            if (typeof QRCode !== 'undefined') {
+              new QRCode(container, {
+                text: fullJoinUrl,
+                width: 144,
+                height: 144,
+                colorDark: '#0f172a',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+              });
+              return;
+            }
+          } catch (e) {
+            console.warn('[QR] QRCode library error, using fallback image', e);
           }
+
+          // Fallback image API
+          const img = document.createElement('img');
+          img.src = `https://api.qrserver.com/v1/create-qr-code/?size=144x144&data=${encodeURIComponent(fullJoinUrl)}`;
+          img.className = 'w-36 h-36 rounded';
+          img.alt = 'QR Code';
+          container.appendChild(img);
         };
 
         onMounted(() => {
@@ -488,12 +506,36 @@
             if (state.stage) currentStage.value = state.stage;
             if (state.question) currentQuestion.value = state.question;
             if (state.timeLeft !== undefined) timeLeft.value = state.timeLeft;
-            if (state.mode) roomMode.value = state.mode;
+            if (state.mode && state.mode !== roomMode.value) {
+              console.log('[Projector] 模式同步更新為:', state.mode);
+              roomMode.value = state.mode;
+            }
             if (state.connectedCount !== undefined) connectedCount.value = state.connectedCount;
             if (state.responseCount !== undefined) responseCount.value = state.responseCount;
             if (state.stats) optionStats.value = state.stats;
             if (state.buzzerWinner) buzzerWinnerName.value = state.buzzerWinner;
             if (state.leaderboard) leaderboardData.value = state.leaderboard;
+          });
+
+          // 監聽教師主控台換房重定向指示
+          sync.on('room_redirect', ({ newRoomId, mode }) => {
+            if (newRoomId && newRoomId !== roomId.value) {
+              console.log('[Projector] 收到換房廣播:', newRoomId);
+              roomId.value = newRoomId;
+              if (mode) roomMode.value = mode;
+              sync.switchRoom(newRoomId);
+              try {
+                window.history.replaceState({}, '', `?room=${newRoomId}`);
+              } catch (e) {}
+              setTimeout(renderQrCode, 200);
+            }
+          });
+
+          // 監聽大廳模式或房間變更時重新渲染 QR Code
+          watch([currentStage, roomId, roomMode], ([st]) => {
+            if (st === 'LOBBY') {
+              setTimeout(renderQrCode, 150);
+            }
           });
 
           // 讀取既有狀態快照

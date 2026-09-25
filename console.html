@@ -41,10 +41,12 @@
           </div>
           <div class="flex items-center space-x-2 text-xs text-slate-400 mt-1">
             <span>房間代碼：</span>
-            <input v-model="roomId" @change="changeRoom" 
-                   title="可自訂或修改房間代碼"
-                   class="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-cyan-400 font-bold w-36 focus:border-cyan-400 focus:outline-none" />
-            <button @click="generateRandomRoom" class="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium">隨機換房</button>
+            <input v-model="roomInput" @keyup.enter="changeRoom" 
+                   placeholder="自訂房號"
+                   title="輸入新房號並點擊切換，投影端與學生端會即時自動跟隨！"
+                   class="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-cyan-400 font-bold w-32 focus:border-cyan-400 focus:outline-none uppercase" />
+            <button @click="changeRoom" class="px-2 py-0.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-[11px] font-bold shadow transition-all">切換</button>
+            <button @click="generateRandomRoom" class="text-[11px] text-slate-400 hover:text-cyan-300 underline font-medium">隨機</button>
           </div>
         </div>
       </div>
@@ -319,7 +321,9 @@
     createApp({
       setup() {
         const urlParams = new URLSearchParams(window.location.search);
-        const roomId = ref(urlParams.get('room') || 'DA-ROOM-888');
+        const initialRoom = (urlParams.get('room') || 'DA-ROOM-888').toUpperCase();
+        const roomId = ref(initialRoom);
+        const roomInput = ref(initialRoom);
         const roomMode = ref('INDIVIDUAL'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
         const currentStage = ref('LOBBY');
         const timerDuration = ref(30);
@@ -406,16 +410,37 @@
         };
 
         const changeRoom = () => {
-          roomId.value = roomId.value.trim().toUpperCase() || 'DA-ROOM-888';
-          if (sync && sync.switchRoom) {
-            sync.switchRoom(roomId.value);
-            broadcastState();
+          const oldRoom = roomId.value;
+          const newRoom = (roomInput.value || '').trim().toUpperCase() || 'DA-ROOM-888';
+          roomInput.value = newRoom;
+          if (oldRoom === newRoom && sync && sync.isFirebaseReady) return;
+
+          // 1. 在舊房間發出重定向廣播，通知已開啟的 projector 與 play 頁面跟隨切換至新房間
+          if (sync && sync.emit) {
+            sync.emit('room_redirect', { oldRoomId: oldRoom, newRoomId: newRoom, mode: roomMode.value });
           }
+
+          // 2. 切換本機與雲端房間
+          roomId.value = newRoom;
+          if (sync && sync.switchRoom) {
+            sync.switchRoom(newRoom);
+          }
+
+          // 3. 更新網址列
+          try {
+            const newUrl = `${window.location.pathname}?room=${newRoom}`;
+            window.history.replaceState({}, '', newUrl);
+          } catch (e) {}
+
+          // 4. 重置新房間在線人數並廣播
+          connectedCount.value = 0;
+          currentResponses.value = {};
+          broadcastState();
         };
 
         const generateRandomRoom = () => {
           const rand = Math.floor(100 + Math.random() * 900);
-          roomId.value = `DA-ROOM-${rand}`;
+          roomInput.value = `DA-ROOM-${rand}`;
           changeRoom();
         };
 
@@ -606,6 +631,7 @@
         return {
           isFirebaseActive,
           roomId,
+          roomInput,
           changeRoom,
           generateRandomRoom,
           gameSessionHistory,

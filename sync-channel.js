@@ -24,14 +24,15 @@ class GameSync {
     this.currentPlayerName = null;
     this.currentGroup = null;
 
-    this._initLocalChannel();
+    this._initLocalChannels();
 
     // 自動偵測全域 FIREBASE_CONFIG 或使用預設內嵌配置
     const config = (typeof window !== 'undefined' && window.FIREBASE_CONFIG) ? window.FIREBASE_CONFIG : DEFAULT_FIREBASE_CONFIG;
     this.initFirebase(config);
   }
 
-  _initLocalChannel() {
+  // 初始化本地廣播頻道 (同機分頁即時備援)
+  _initLocalChannels() {
     this.channelName = `game_sync_${this.roomId}`;
     if (typeof BroadcastChannel !== 'undefined') {
       try {
@@ -41,6 +42,19 @@ class GameSync {
           const { type, data } = event.data || {};
           if (type) this._trigger(type, data);
         };
+
+        // 全域廣播頻道 (用於跨房間重定向通知)
+        if (!this.globalBc) {
+          this.globalBc = new BroadcastChannel('game_sync_global');
+          this.globalBc.onmessage = (event) => {
+            const { type, data } = event.data || {};
+            if (type === 'room_redirect' && data && data.newRoomId) {
+              if (this.role !== 'host') {
+                this._trigger('room_redirect', data);
+              }
+            }
+          };
+        }
       } catch (e) {
         console.warn('[Sync] BroadcastChannel error:', e);
       }
@@ -53,6 +67,14 @@ class GameSync {
             const payload = JSON.parse(e.newValue);
             if (payload && payload.type) {
               this._trigger(payload.type, payload.data);
+            }
+          } catch (err) {}
+        }
+        if (e.key === 'game_active_room_sync' && e.newValue) {
+          try {
+            const data = JSON.parse(e.newValue);
+            if (data && data.newRoomId && this.role !== 'host') {
+              this._trigger('room_redirect', data);
             }
           } catch (err) {}
         }
@@ -94,6 +116,16 @@ class GameSync {
 
       this._bindRoomListeners();
 
+      // 監聽全域最新活動房間 (非 host 端可跟隨最新房間)
+      if (this.role !== 'host') {
+        this.firebaseDb.ref('system/active_room').on('value', (snap) => {
+          const val = snap.val();
+          if (val && val.roomId && val.roomId !== this.roomId) {
+            this._trigger('room_redirect', { oldRoomId: this.roomId, newRoomId: val.roomId, mode: val.mode });
+          }
+        });
+      }
+
     } catch (err) {
       console.error('[Sync] Firebase 初始化異常:', err);
     }
@@ -111,7 +143,17 @@ class GameSync {
       }
     });
 
-    // (B) 監聽搶答結果 (Buzzer Winner)
+    // (B) 監聽舊房間重定向訊號
+    roomRef.child('redirect').on('value', (snapshot) => {
+      const redirectData = snapshot.val();
+      if (redirectData && redirectData.newRoomId && redirectData.newRoomId !== this.roomId) {
+        if (this.role !== 'host') {
+          this._trigger('room_redirect', redirectData);
+        }
+      }
+    });
+
+    // (C) 監聽搶答結果 (Buzzer Winner)
     roomRef.child('buzzer_winner').on('value', (snapshot) => {
       const winner = snapshot.val();
       if (winner) {
@@ -119,14 +161,14 @@ class GameSync {
       }
     });
 
-    // (C) 監聽學員進房名單與在線人數
+    // (D) 監聽學員進房名單與在線人數
     roomRef.child('players').on('value', (snapshot) => {
       const players = snapshot.val() || {};
       const count = Object.keys(players).length;
       this._trigger('players_update', { count, players });
     });
 
-    // (D) Host 專屬監聽：學員作答
+    // (E) Host 專屬監聽：學員作答
     if (this.role === 'host') {
       roomRef.child('responses').on('child_added', (snapshot) => {
         const answer = snapshot.val();
@@ -146,7 +188,7 @@ class GameSync {
       });
     }
 
-    // (E) Player 專屬：連線狀態保持
+    // (F) Player 專屬：連線狀態保持
     if (this.role === 'player') {
       const connectedRef = this.firebaseDb.ref('.info/connected');
       connectedRef.on('value', (snap) => {
@@ -168,10 +210,11 @@ class GameSync {
   // 切換房間
   switchRoom(newRoomId) {
     if (!newRoomId || newRoomId === this.roomId) return;
+    const oldRoomId = this.roomId;
     this.roomId = newRoomId;
-    this._initLocalChannel();
+    this._initLocalChannels();
     this._bindRoomListeners();
-    console.log(`[Sync] 已切換至新房間: ${this.roomId}`);
+    console.log(`[Sync] 已切換至新房間: ${this.roomId} (前房間: ${oldRoomId})`);
   }
 
   // 註冊學員身分（供在線人數統計）
@@ -208,18 +251,26 @@ class GameSync {
 
   // 廣播事件與狀態變更
   emit(type, data) {
-    const payload = { type, data, timestamp: Date.now() };
+    // 深度純淨化資料，徹底防止 undefined 破壞 Firebase set
+    const sanitizedData = data !== undefined ? JSON.parse(JSON.stringify(data)) : null;
+    const payload = { type, data: sanitizedData, timestamp: Date.now() };
 
     // 1. 本地廣播
     if (this.bc) {
       try { this.bc.postMessage(payload); } catch (e) {}
     }
+    if (type === 'room_redirect' && this.globalBc) {
+      try { this.globalBc.postMessage(payload); } catch (e) {}
+    }
     try {
       localStorage.setItem(`state_${this.roomId}`, JSON.stringify(payload));
+      if (type === 'room_redirect') {
+        localStorage.setItem('game_active_room_sync', JSON.stringify(sanitizedData));
+      }
     } catch (e) {}
 
     // 本地立即觸發
-    this._trigger(type, data);
+    this._trigger(type, sanitizedData);
 
     // 2. 雲端 Firebase 同步寫入
     if (this.firebaseDb) {
@@ -227,36 +278,60 @@ class GameSync {
 
       // (A) 狀態變更 (Host -> 全體)
       if (type === 'state_change' || type === 'update_state') {
-        roomRef.child('state').set(data);
+        roomRef.child('state').set(sanitizedData);
+
+        // 同步更新全域活動房間資訊
+        if (this.role === 'host') {
+          this.firebaseDb.ref('system/active_room').set({
+            roomId: this.roomId,
+            mode: sanitizedData ? sanitizedData.mode : 'INDIVIDUAL',
+            stage: sanitizedData ? sanitizedData.stage : 'LOBBY',
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+        }
 
         // 若換新題目或回到大廳，自動清理上一題的作答與搶答暫存
-        if (data.stage === 'QUESTION_ACTIVE' || data.stage === 'BUZZER_ALERT' || data.stage === 'LOBBY') {
-          if (data.stage === 'QUESTION_ACTIVE' || data.stage === 'LOBBY') {
+        if (sanitizedData && (sanitizedData.stage === 'QUESTION_ACTIVE' || sanitizedData.stage === 'BUZZER_ALERT' || sanitizedData.stage === 'LOBBY')) {
+          if (sanitizedData.stage === 'QUESTION_ACTIVE' || sanitizedData.stage === 'LOBBY') {
             roomRef.child('responses').remove();
           }
           roomRef.child('buzzer_winner').remove();
         }
       }
 
-      // (B) 儲存全場歷史紀錄到雲端
+      // (B) 房間重定向廣播 (Host -> 全體投影與學員端)
+      else if (type === 'room_redirect') {
+        if (sanitizedData && sanitizedData.oldRoomId) {
+          this.firebaseDb.ref(`rooms/${sanitizedData.oldRoomId}/redirect`).set({
+            newRoomId: sanitizedData.newRoomId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+          });
+        }
+        this.firebaseDb.ref('system/active_room').set({
+          roomId: sanitizedData.newRoomId,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+
+      // (C) 儲存全場歷史紀錄到雲端
       else if (type === 'save_history') {
-        if (data && data.roundId) {
-          roomRef.child(`history/${data.roundId}`).set(data);
+        if (sanitizedData && sanitizedData.roundId) {
+          roomRef.child(`history/${sanitizedData.roundId}`).set(sanitizedData);
         }
       }
 
-      // (C) 學員提交答案 (Player -> Host)
+      // (D) 學員提交答案 (Player -> Host)
       else if (type === 'submit_answer') {
-        if (data && data.playerId) {
-          roomRef.child(`responses/${data.playerId}`).set(data);
+        if (sanitizedData && sanitizedData.playerId) {
+          roomRef.child(`responses/${sanitizedData.playerId}`).set(sanitizedData);
         }
       }
 
-      // (D) 極速搶答 (Player -> Transaction 唯一得主判定)
+      // (E) 極速搶答 (Player -> Transaction 唯一得主判定)
       else if (type === 'buzzer_hit' || type === 'buzzer_trigger') {
         roomRef.child('buzzer_winner').transaction((current) => {
           if (current === null) {
-            return data; // 第一位搶到者獲勝
+            return sanitizedData; // 第一位搶到者獲勝
           }
           return; // 已有得主，放棄寫入
         }, (error, committed, snapshot) => {
