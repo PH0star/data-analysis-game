@@ -258,7 +258,7 @@
 
       <!-- 狀態 3: 排行榜模式 (LEADERBOARD，優先於題目展示判定，解決被題目遮蔽的重大 Bug！) -->
       <div v-else-if="currentStage === 'LEADERBOARD'" class="flex flex-col items-center justify-center h-full space-y-3.5 my-auto">
-        <div class="text-center space-y-1">
+        <div class="text-center space-y-1 relative w-full max-w-2xl">
           <h2 class="text-2xl lg:text-4xl font-black text-amber-300 flex items-center justify-center space-x-2">
             <span>🏆</span>
             <span>即時戰況排行榜</span>
@@ -267,6 +267,12 @@
           <p class="text-xs text-slate-400 font-bold">
             {{ roomMode === 'GROUP_REPRESENTATIVE' ? '👥 小組代表制（共 6 組戰況）' : '👤 個人競賽制即時排行' }}
           </p>
+          <!-- 投影端緊急退出按鈕 -->
+          <button @click="exitLeaderboard" 
+                  title="點擊關閉排行榜，返回題目或大廳"
+                  class="absolute right-0 top-0 px-3 py-1 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 font-bold flex items-center space-x-1 shadow transition-all">
+            <span>✖ 關閉排行榜</span>
+          </button>
         </div>
 
         <div class="w-full max-w-2xl bg-slate-900/95 border border-slate-800 rounded-2xl p-4 lg:p-5 shadow-2xl max-h-[62vh] overflow-y-auto space-y-2.5">
@@ -380,8 +386,14 @@
 
     <!-- 底部狀態列 (Footer) -->
     <footer class="flex items-center justify-between border-t border-slate-800 pt-2.5 text-xs text-slate-500">
-      <div>
-        狀態：<span class="text-slate-300 font-medium">{{ stageDescription }}</span>
+      <div class="flex items-center space-x-3">
+        <div>狀態：<span class="text-slate-300 font-medium">{{ stageDescription }}</span></div>
+        <button @click="exitLeaderboard" v-if="currentStage === 'LEADERBOARD'" class="text-amber-400 hover:text-amber-300 underline font-bold">
+          [ 關閉排行榜 ]
+        </button>
+        <button @click="forceSyncFromCloud" class="text-slate-500 hover:text-cyan-400 underline" title="點擊強制自雲端刷新狀態">
+          [ ↺ 雲端同步刷新 ]
+        </button>
       </div>
       <div class="flex items-center space-x-4 font-mono">
         <span>已作答：<strong class="text-cyan-400 text-sm">{{ responseCount }}</strong> / {{ totalExpectedCount }}</span>
@@ -395,8 +407,9 @@
 
     createApp({
       setup() {
-        const roomId = ref('DA-ROOM-888');
-        const roomMode = ref('GROUP_REPRESENTATIVE'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = ref((urlParams.get('room') || 'DA-ROOM-888').toUpperCase());
+        const roomMode = ref('INDIVIDUAL'); // 預設個人競賽
         const currentStage = ref('LOBBY'); // LOBBY, QUESTION_ACTIVE, BUZZER_ALERT, BUZZER_WINNER, STATS, REVEAL, LEADERBOARD
         const currentQuestion = ref(null);
         const timeLeft = ref(30);
@@ -433,6 +446,26 @@
           }
           return `強制 ${activeAspect.value}`;
         });
+
+                // 手動關閉排行榜（若卡在排行榜，直接點擊關閉）
+        const exitLeaderboard = () => {
+          currentStage.value = currentQuestion.value ? 'REVEAL' : 'LOBBY';
+        };
+
+        // 強制從雲端抓取最新狀態
+        const forceSyncFromCloud = () => {
+          if (sync && sync.firebaseDb) {
+            sync.firebaseDb.ref(`rooms/${roomId.value}/state`).once('value', (snap) => {
+              const state = snap.val();
+              if (state) {
+                if (state.stage) currentStage.value = state.stage;
+                if (state.question) currentQuestion.value = state.question;
+                if (state.mode) roomMode.value = state.mode;
+                if (state.leaderboard) leaderboardData.value = state.leaderboard;
+              }
+            });
+          }
+        };
 
         const toggleAspectRatio = () => {
           if (userAspectSetting.value === 'auto') {
@@ -616,6 +649,8 @@
         });
 
         return {
+          exitLeaderboard,
+          forceSyncFromCloud,
           isFirebaseActive,
           joinUrl,
           roomId,
