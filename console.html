@@ -345,9 +345,8 @@
         const isFirebaseActive = ref(false);
         const gameSessionHistory = ref([]);
 
-        // 真實動態積分榜（個人模式與小組模式獨立儲存）
-        const individualScores = ref({});
-        const groupScores = ref({
+        // 產生預設小組空白積分表
+        const defaultGroupScores = () => ({
           '第 1 組': { name: '第 1 組', score: 0, correctCount: 0, totalAnswers: 0 },
           '第 2 組': { name: '第 2 組', score: 0, correctCount: 0, totalAnswers: 0 },
           '第 3 組': { name: '第 3 組', score: 0, correctCount: 0, totalAnswers: 0 },
@@ -355,6 +354,10 @@
           '第 5 組': { name: '第 5 組', score: 0, correctCount: 0, totalAnswers: 0 },
           '第 6 組': { name: '第 6 組', score: 0, correctCount: 0, totalAnswers: 0 }
         });
+
+        // 真實動態積分榜（個人模式與小組模式獨立儲存）
+        const individualScores = ref({});
+        const groupScores = ref(defaultGroupScores());
 
         // 依目前模式即時計算排序排行榜
         const leaderboard = computed(() => {
@@ -369,16 +372,17 @@
         });
 
         const resetLeaderboard = () => {
-          if (confirm('確定要將目前全場積分重置歸零嗎？')) {
+          if (confirm(`確定要將房間【${roomId.value}】的全場積分重置歸零嗎？（其他房間歷史紀錄不受影響）`)) {
             individualScores.value = {};
-            groupScores.value = {
-              '第 1 組': { name: '第 1 組', score: 0, correctCount: 0, totalAnswers: 0 },
-              '第 2 組': { name: '第 2 組', score: 0, correctCount: 0, totalAnswers: 0 },
-              '第 3 組': { name: '第 3 組', score: 0, correctCount: 0, totalAnswers: 0 },
-              '第 4 組': { name: '第 4 組', score: 0, correctCount: 0, totalAnswers: 0 },
-              '第 5 組': { name: '第 5 組', score: 0, correctCount: 0, totalAnswers: 0 },
-              '第 6 組': { name: '第 6 組', score: 0, correctCount: 0, totalAnswers: 0 }
-            };
+            groupScores.value = defaultGroupScores();
+            gameSessionHistory.value = [];
+            if (sync && sync.emit) {
+              sync.emit('save_scores', {
+                individualScores: individualScores.value,
+                groupScores: groupScores.value,
+                updatedAt: Date.now()
+              });
+            }
             broadcastState();
           }
         };
@@ -442,7 +446,7 @@
           broadcastState();
         };
 
-        const changeRoom = () => {
+        const changeRoom = async () => {
           const oldRoom = roomId.value;
           const newRoom = (roomInput.value || '').trim().toUpperCase() || 'DA-ROOM-888';
           roomInput.value = newRoom;
@@ -453,7 +457,7 @@
             sync.emit('room_redirect', { oldRoomId: oldRoom, newRoomId: newRoom, mode: roomMode.value });
           }
 
-          // 2. 切換本機與雲端房間
+          // 2. 切換房間代碼與中繼連線
           roomId.value = newRoom;
           if (sync && sync.switchRoom) {
             sync.switchRoom(newRoom);
@@ -465,9 +469,37 @@
             window.history.replaceState({}, '', newUrl);
           } catch (e) {}
 
-          // 4. 重置新房間在線人數並廣播
+          // 4. 重置新房間在線暫存
           connectedCount.value = 0;
           currentResponses.value = {};
+          buzzerWinner.value = '';
+          currentStage.value = 'LOBBY';
+
+          // 5. 【各房間獨立記憶存檔機制】：讀取新房間歷史存檔或全新開局
+          if (sync && sync.loadRoomData) {
+            const saved = await sync.loadRoomData(newRoom);
+            if (saved && saved.exists && saved.scores) {
+              // 若先前在該房間進行過遊戲，完整還原該房間累積戰報與積分！
+              individualScores.value = saved.scores.individualScores || {};
+              groupScores.value = saved.scores.groupScores || defaultGroupScores();
+              gameSessionHistory.value = saved.history || [];
+              if (saved.state && saved.state.mode) {
+                roomMode.value = saved.state.mode;
+              }
+              console.log(`[Host] 房間 ${newRoom} 存檔載入成功，已還原歷史積分！`);
+            } else {
+              // 全新未開過之房間，從 0 分乾淨開局！
+              individualScores.value = {};
+              groupScores.value = defaultGroupScores();
+              gameSessionHistory.value = [];
+              console.log(`[Host] 房間 ${newRoom} 為全新房間，從 0 分乾淨開局！`);
+            }
+          } else {
+            individualScores.value = {};
+            groupScores.value = defaultGroupScores();
+            gameSessionHistory.value = [];
+          }
+
           broadcastState();
         };
 
@@ -610,6 +642,12 @@
             gameSessionHistory.value.push(roundRecord);
             if (sync && sync.emit) {
               sync.emit('save_history', roundRecord);
+              // 同步將該房間最新獨立積分存檔持久化至 Firebase 與本地
+              sync.emit('save_scores', {
+                individualScores: individualScores.value,
+                groupScores: groupScores.value,
+                updatedAt: Date.now()
+              });
             }
           }
 
@@ -673,6 +711,19 @@
         onMounted(async () => {
           await loadQuestions();
           sync = new GameSync(roomId.value, 'host');
+
+          // 自動嘗試恢復當前房間既有存檔
+          if (sync && sync.loadRoomData) {
+            try {
+              const saved = await sync.loadRoomData(roomId.value);
+              if (saved && saved.exists && saved.scores) {
+                individualScores.value = saved.scores.individualScores || {};
+                groupScores.value = saved.scores.groupScores || defaultGroupScores();
+                gameSessionHistory.value = saved.history || [];
+                if (saved.state && saved.state.mode) roomMode.value = saved.state.mode;
+              }
+            } catch (err) {}
+          }
 
           if (sync.isFirebaseReady) {
             isFirebaseActive.value = true;

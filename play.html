@@ -288,13 +288,20 @@
             isFirebaseActive.value = true;
           });
 
-          // 監聽教師換房廣播
+          // 監聽教師換房廣播（新房間重置本機分數與狀態）
           sync.on('room_redirect', ({ newRoomId, mode }) => {
             if (newRoomId && newRoomId !== roomId.value) {
-              console.log('[Play] 收到換房通知:', newRoomId);
+              console.log('[Play] 收到換房通知，同步遷移至新房間:', newRoomId);
               roomId.value = newRoomId;
               if (mode) roomMode.value = mode;
+              myScore.value = 0; // 重置新房間分數，不留舊帳
+              submittedOption.value = '';
+              hasScoredCurrentQuestion.value = false;
+              currentStage.value = 'LOBBY';
               sync.switchRoom(newRoomId);
+              if (isLoggedIn.value && sync.registerPlayer) {
+                sync.registerPlayer(playerId.value, playerName.value, isGroupMode.value ? selectedTeamName.value : '');
+              }
               try {
                 window.history.replaceState({}, '', `?room=${newRoomId}`);
               } catch (e) {}
@@ -322,7 +329,7 @@
                 console.log('[Play] 載入新題目，重置作答選項:', newQId);
               }
               currentAnswer.value = (state.question.answer || '').trim();
-              currentPoints.value = state.question.score || 100;
+              currentPoints.value = parseInt(state.question.score, 10) || 100;
             }
 
             // 3. 同步模式與搶答者
@@ -333,13 +340,14 @@
               buzzerWinner.value = state.buzzerWinner;
             }
 
-            // 4. 正確加分結算（每道題目揭曉時只結算加分一次）
-            if (state.stage === 'REVEAL' && !hasScoredCurrentQuestion.value) {
-              if (submittedOption.value && submittedOption.value.trim().toUpperCase() === currentAnswer.value.trim().toUpperCase()) {
-                myScore.value += currentPoints.value;
-                console.log('[Play] 作答正確，累加積分:', currentPoints.value, '總分:', myScore.value);
+            // 4. 與後端官方排行榜「權威同步」累計積分（保證學員端介面分數與大螢幕戰況榜 100% 精確一致！）
+            if (state.leaderboard && Array.isArray(state.leaderboard) && playerName.value) {
+              const myEntry = state.leaderboard.find(p => p.name === playerName.value);
+              if (myEntry) {
+                myScore.value = Number(myEntry.score || 0);
+              } else if (state.stage === 'LOBBY') {
+                myScore.value = 0;
               }
-              hasScoredCurrentQuestion.value = true;
             }
           });
         });

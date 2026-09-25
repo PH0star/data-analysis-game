@@ -320,6 +320,14 @@ class GameSync {
         }
       }
 
+      // (D) 儲存本房間獨立積分存檔到雲端與本地
+      else if (type === 'save_scores') {
+        roomRef.child('scores').set(sanitizedData);
+        try {
+          localStorage.setItem(`room_${this.roomId}_scores`, JSON.stringify(sanitizedData));
+        } catch (e) {}
+      }
+
       // (D) 學員提交答案 (Player -> Host)
       else if (type === 'submit_answer') {
         if (sanitizedData && sanitizedData.playerId) {
@@ -343,6 +351,32 @@ class GameSync {
         });
       }
     }
+  }
+
+  // 讀取指定房間之雲端與本地獨立存檔（支援房間切換時自動還原歷史積分）
+  loadRoomData(targetRoomId = this.roomId) {
+    return new Promise((resolve) => {
+      let localScores = null;
+      try {
+        const raw = localStorage.getItem(`room_${targetRoomId}_scores`);
+        if (raw) localScores = JSON.parse(raw);
+      } catch (e) {}
+
+      if (this.firebaseDb) {
+        this.firebaseDb.ref(`rooms/${targetRoomId}`).once('value', (snapshot) => {
+          const roomVal = snapshot.val() || {};
+          const scores = roomVal.scores || localScores || null;
+          const state = roomVal.state || null;
+          const history = roomVal.history ? Object.values(roomVal.history) : [];
+          resolve({ scores, state, history, exists: !!(roomVal.scores || roomVal.state) });
+        }, (err) => {
+          console.warn('[Sync] 雲端讀取失敗，使用本地存檔', err);
+          resolve({ scores: localScores, state: null, history: [], exists: !!localScores });
+        });
+      } else {
+        resolve({ scores: localScores, state: null, history: [], exists: !!localScores });
+      }
+    });
   }
 
   // 讀取當前儲存之狀態快照
