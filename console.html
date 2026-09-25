@@ -51,18 +51,66 @@
         </div>
       </div>
 
-      <!-- 模式切換器 (個人模式 vs 小組模式 C) -->
-      <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
-        <button @click="setMode('INDIVIDUAL')" 
-                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-          👤 個人競賽制 (30人)
-        </button>
-        <button @click="setMode('GROUP_REPRESENTATIVE')" 
-                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
-          👥 小組代表制 (6組長代表)
-        </button>
+      <!-- 模式與人數/組數整合設定區 -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- 模式切換按鈕 -->
+        <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-inner">
+          <button @click="setMode('INDIVIDUAL')" 
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1"
+                  :class="roomMode === 'INDIVIDUAL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+            <span>👤 個人競賽制</span>
+          </button>
+          <button @click="setMode('GROUP_REPRESENTATIVE')" 
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1"
+                  :class="roomMode === 'GROUP_REPRESENTATIVE' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'">
+            <span>👥 小組代表制</span>
+          </button>
+        </div>
+
+        <!-- 人數 / 組數動態設定卡片 -->
+        <div class="flex items-center bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-xl text-xs space-x-2 shadow">
+          <!-- 個人模式：預期應答人數設定 -->
+          <div v-if="roomMode === 'INDIVIDUAL'" class="flex items-center space-x-2">
+            <span class="text-slate-300 font-bold flex items-center space-x-1">
+              <span>🎯 預期人數：</span>
+            </span>
+            <input v-model.number="targetStudentCount" @change="onSettingsChange" type="number" min="1" max="300"
+                   title="輸入預期應答人數"
+                   class="bg-slate-950 border border-cyan-500/50 rounded-lg px-2 py-0.5 text-xs font-mono text-cyan-300 font-bold w-14 text-center focus:outline-none focus:border-cyan-400">
+            <span class="text-slate-400">人</span>
+            <!-- 快捷人數鈕 -->
+            <div class="flex items-center space-x-1 ml-1">
+              <button v-for="c in [15, 20, 30, 40, 50]" :key="c"
+                      @click="setTargetStudentCount(c)"
+                      class="px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all"
+                      :class="targetStudentCount === c ? 'bg-blue-600 text-white shadow' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700/80'">
+                {{ c }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 小組模式：組別數量設定 -->
+          <div v-else class="flex items-center space-x-2">
+            <span class="text-slate-300 font-bold flex items-center space-x-1">
+              <span>👥 組別數量：</span>
+            </span>
+            <select v-model.number="groupCount" @change="onGroupCountChange"
+                    class="bg-slate-950 border border-purple-500/50 rounded-lg px-2.5 py-1 text-xs font-bold text-purple-200 focus:outline-none focus:border-purple-400 cursor-pointer">
+              <option v-for="n in [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16]" :key="n" :value="n">
+                共 {{ n }} 組
+              </option>
+            </select>
+            <!-- 快捷組數鈕 -->
+            <div class="flex items-center space-x-1 ml-1">
+              <button v-for="n in [3, 4, 5, 6, 8, 10]" :key="n"
+                      @click="setGroupCount(n)"
+                      class="px-2 py-0.5 rounded text-[11px] font-bold transition-all"
+                      :class="groupCount === n ? 'bg-purple-600 text-white shadow' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700/80'">
+                {{ n }}組
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 快速連結與狀態 -->
