@@ -46,11 +46,11 @@
       transition: all 0.25s ease-out;
     }
 
-    /* 答案選項 2x2 雙欄宮格佈局與 RWD 自適應 */
+    /* 答案選項 2x2 雙欄宮格佈局與 RWD 自適應 (文字大字體清晰優化) */
     .options-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 0.85rem;
+      gap: clamp(0.75rem, 1.4vh + 0.4rem, 1.4rem);
     }
 
     /* RWD 規則：當螢幕寬度較小（如手機或窄螢幕視窗 < 768px）時，自動轉為單欄縱向排列 */
@@ -59,6 +59,26 @@
         grid-template-columns: 1fr !important;
         gap: 0.5rem !important;
       }
+    }
+
+    /* 選項卡片與文字大字體自適應 (空間足夠時顯著放大) */
+    .option-card {
+      min-height: clamp(60px, 8.5vh, 110px);
+      padding: clamp(0.65rem, 1.2vh + 0.4rem, 1.25rem) !important;
+    }
+    .option-text {
+      font-size: clamp(1.05rem, 1.15vw + 0.45rem, 1.65rem);
+      line-height: 1.35;
+      font-weight: 600;
+    }
+    .option-badge {
+      width: clamp(34px, 3vw, 48px);
+      height: clamp(34px, 3vw, 48px);
+      font-size: clamp(1.1rem, 1.3vw, 1.5rem);
+    }
+    .question-title {
+      font-size: clamp(1.15rem, 1.4vw + 0.45rem, 2rem);
+      line-height: 1.35;
     }
 
     /* 16:9 寬螢幕自適應外距 */
@@ -72,9 +92,6 @@
     }
     .mode-4-3 .options-grid {
       gap: 0.65rem;
-    }
-    .mode-4-3 .option-card {
-      padding: 0.65rem 0.85rem !important;
     }
 
     /* 選項色彩定義 */
@@ -278,8 +295,8 @@
               </div>
             </div>
             <div class="text-right">
-              <div class="font-mono font-black text-xl lg:text-2xl text-cyan-400">
-                {{ player.score }} <span class="text-xs font-normal text-slate-400">分</span>
+              <div class="font-mono font-black text-xl lg:text-3xl text-cyan-400">
+                {{ Number(player.score || 0) }} <span class="text-xs font-normal text-slate-400">分</span>
               </div>
             </div>
           </div>
@@ -299,50 +316,50 @@
             <span>•</span>
             <span class="text-amber-400 uppercase font-bold">{{ questionTypeLabel(currentQuestion.question_type) }}</span>
           </div>
-          <h2 class="text-lg lg:text-2xl font-bold leading-snug text-slate-100">
+          <h2 class="question-title font-bold text-slate-100">
             {{ currentQuestion.question }}
           </h2>
         </div>
 
-        <!-- 四選項宮格 (Options Grid，預設 2x2 雙欄，小螢幕自動 RWD 單欄) -->
+        <!-- 四選項宮格 (Options Grid，預設 2x2 雙欄，小螢幕自動 RWD 單欄，大字體優化) -->
         <div class="options-grid flex-1 min-h-0 my-1">
           <!-- 選項 A -->
-          <div class="option-card opt-a relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+          <div class="option-card opt-a relative border-2 rounded-xl flex items-center space-x-3.5 transition-all shadow-md"
                :class="getOptionFeedbackClass('A')">
-            <span class="opt-a-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">A</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_a }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.A || 0 }}%</span>
+            <span class="opt-a-badge option-badge text-white font-black font-mono rounded-xl flex items-center justify-center flex-shrink-0 shadow">A</span>
+            <span class="option-text text-slate-100 flex-1">{{ currentQuestion.option_a }}</span>
+            <div v-if="showStats" class="text-right pl-3">
+              <span class="font-mono font-black text-xl lg:text-2xl text-slate-100">{{ optionStats.A || 0 }}%</span>
             </div>
           </div>
 
           <!-- 選項 B -->
-          <div class="option-card opt-b relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+          <div class="option-card opt-b relative border-2 rounded-xl flex items-center space-x-3.5 transition-all shadow-md"
                :class="getOptionFeedbackClass('B')">
-            <span class="opt-b-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">B</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_b }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.B || 0 }}%</span>
+            <span class="opt-b-badge option-badge text-white font-black font-mono rounded-xl flex items-center justify-center flex-shrink-0 shadow">B</span>
+            <span class="option-text text-slate-100 flex-1">{{ currentQuestion.option_b }}</span>
+            <div v-if="showStats" class="text-right pl-3">
+              <span class="font-mono font-black text-xl lg:text-2xl text-slate-100">{{ optionStats.B || 0 }}%</span>
             </div>
           </div>
 
           <!-- 選項 C -->
-          <div class="option-card opt-c relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+          <div class="option-card opt-c relative border-2 rounded-xl flex items-center space-x-3.5 transition-all shadow-md"
                :class="getOptionFeedbackClass('C')">
-            <span class="opt-c-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">C</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_c }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.C || 0 }}%</span>
+            <span class="opt-c-badge option-badge text-white font-black font-mono rounded-xl flex items-center justify-center flex-shrink-0 shadow">C</span>
+            <span class="option-text text-slate-100 flex-1">{{ currentQuestion.option_c }}</span>
+            <div v-if="showStats" class="text-right pl-3">
+              <span class="font-mono font-black text-xl lg:text-2xl text-slate-100">{{ optionStats.C || 0 }}%</span>
             </div>
           </div>
 
           <!-- 選項 D -->
-          <div class="option-card opt-d relative border-2 rounded-xl p-2.5 lg:p-3.5 flex items-center space-x-3 transition-all min-h-[56px]"
+          <div class="option-card opt-d relative border-2 rounded-xl flex items-center space-x-3.5 transition-all shadow-md"
                :class="getOptionFeedbackClass('D')">
-            <span class="opt-d-badge text-white font-black font-mono w-8 h-8 lg:w-9 lg:h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 shadow">D</span>
-            <span class="text-sm lg:text-base font-medium text-slate-100 flex-1 leading-snug">{{ currentQuestion.option_d }}</span>
-            <div v-if="showStats" class="text-right pl-2">
-              <span class="font-mono font-bold text-base lg:text-xl text-slate-100">{{ optionStats.D || 0 }}%</span>
+            <span class="opt-d-badge option-badge text-white font-black font-mono rounded-xl flex items-center justify-center flex-shrink-0 shadow">D</span>
+            <span class="option-text text-slate-100 flex-1">{{ currentQuestion.option_d }}</span>
+            <div v-if="showStats" class="text-right pl-3">
+              <span class="font-mono font-black text-xl lg:text-2xl text-slate-100">{{ optionStats.D || 0 }}%</span>
             </div>
           </div>
         </div>
@@ -479,7 +496,14 @@
         };
 
         const sortedLeaderboard = computed(() => {
-          return [...leaderboardData.value].sort((a, b) => b.score - a.score);
+          return [...leaderboardData.value]
+            .map(p => ({
+              ...p,
+              score: Number(p.score || 0),
+              correctCount: Number(p.correctCount || 0),
+              totalAnswers: Number(p.totalAnswers || 0)
+            }))
+            .sort((a, b) => b.score - a.score || b.correctCount - a.correctCount);
         });
 
         // 建立同步中繼

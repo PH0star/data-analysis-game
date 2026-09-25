@@ -359,7 +359,12 @@
         // 依目前模式即時計算排序排行榜
         const leaderboard = computed(() => {
           const scoreMap = roomMode.value === 'GROUP_REPRESENTATIVE' ? groupScores.value : individualScores.value;
-          const list = Object.values(scoreMap);
+          const list = Object.values(scoreMap).map(p => ({
+            ...p,
+            score: Number(p.score || 0),
+            correctCount: Number(p.correctCount || 0),
+            totalAnswers: Number(p.totalAnswers || 0)
+          }));
           return list.sort((a, b) => b.score - a.score || b.correctCount - a.correctCount);
         });
 
@@ -551,24 +556,24 @@
           currentStage.value = 'REVEAL';
 
           if (selectedQuestion.value) {
-            const correctAns = selectedQuestion.value.answer;
-            const pts = selectedQuestion.value.score || 100;
+            const correctAns = (selectedQuestion.value.answer || '').trim();
+            const pts = parseInt(selectedQuestion.value.score, 10) || 100;
 
             Object.values(currentResponses.value).forEach(r => {
-              const isCorrect = (r.option === correctAns);
+              const isCorrect = (r.option || '').trim().toUpperCase() === correctAns.toUpperCase();
 
               if (roomMode.value === 'GROUP_REPRESENTATIVE') {
-                // 小組代表模式：計分給該組別
+                // 小組代表模式：純數值計分（絕不發生字串拼接補0）
                 const team = groupScores.value[r.playerName];
                 if (team) {
-                  team.totalAnswers++;
+                  team.totalAnswers = Number(team.totalAnswers || 0) + 1;
                   if (isCorrect) {
-                    team.score += pts;
-                    team.correctCount++;
+                    team.score = Number(team.score || 0) + pts;
+                    team.correctCount = Number(team.correctCount || 0) + 1;
                   }
                 }
               } else {
-                // 個人競賽模式：計分給該學員
+                // 個人競賽模式：純數值計分
                 const pId = r.playerId || r.playerName;
                 if (!individualScores.value[pId]) {
                   individualScores.value[pId] = {
@@ -580,10 +585,10 @@
                   };
                 }
                 const p = individualScores.value[pId];
-                p.totalAnswers++;
+                p.totalAnswers = Number(p.totalAnswers || 0) + 1;
                 if (isCorrect) {
-                  p.score += pts;
-                  p.correctCount++;
+                  p.score = Number(p.score || 0) + pts;
+                  p.correctCount = Number(p.correctCount || 0) + 1;
                 }
               }
             });
