@@ -46,7 +46,7 @@ class GameSync {
       }
     }
 
-    if (!this._storageListenerBound) {
+    if (typeof window !== 'undefined' && window.addEventListener && !this._storageListenerBound) {
       window.addEventListener('storage', (e) => {
         if (e.key === `state_${this.roomId}` && e.newValue) {
           try {

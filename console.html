@@ -318,8 +318,9 @@
 
     createApp({
       setup() {
-        const roomId = ref('DA-ROOM-888');
-        const roomMode = ref('GROUP_REPRESENTATIVE'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = ref(urlParams.get('room') || 'DA-ROOM-888');
+        const roomMode = ref('INDIVIDUAL'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
         const currentStage = ref('LOBBY');
         const timerDuration = ref(30);
         const timeLeft = ref(30);
@@ -331,7 +332,9 @@
         const selectedQuestion = ref(null);
         const currentResponses = ref({});
         const buzzerWinner = ref('');
-        const connectedCount = ref(6);
+        const connectedCount = ref(0); // 真實即時在線連線人數，從 0 人起算
+        const isFirebaseActive = ref(false);
+        const gameSessionHistory = ref([]);
 
         // 假資料積分榜
         const leaderboard = ref([
@@ -560,8 +563,6 @@
           link.download = `DataQuest_GameReport_${roomId.value}_${new Date().toISOString().slice(0, 10)}.csv`;
           link.click();
         };
-
-        const isFirebaseActive = ref(false);
 
         onMounted(async () => {
           await loadQuestions();
