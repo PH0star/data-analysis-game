@@ -473,6 +473,9 @@
           if (sync.isFirebaseReady) {
             isFirebaseActive.value = true;
           }
+          sync.on('connection_status', ({ online }) => {
+            isFirebaseActive.value = online;
+          });
           sync.on('firebase_connected', () => {
             isFirebaseActive.value = true;
           });

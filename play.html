@@ -67,6 +67,13 @@
           </p>
         </div>
 
+        <!-- 房間代碼確認或修改 -->
+        <div class="space-y-1.5 text-left">
+          <label class="text-xs text-slate-400 block">連線房間代碼：</label>
+          <input v-model="roomId" type="text" placeholder="例：DA-ROOM-888"
+                 class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs font-mono text-cyan-400 font-bold focus:outline-none focus:border-cyan-500 uppercase">
+        </div>
+
         <!-- 小組代表模式快速選擇 (C 方案) -->
         <div v-if="isGroupMode" class="space-y-2">
           <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
@@ -216,10 +223,14 @@
         };
 
         const doLogin = () => {
+          roomId.value = roomId.value.trim().toUpperCase() || 'DA-ROOM-888';
           playerName.value = isGroupMode.value ? selectedTeamName.value : (inputName.value.trim() || '學員 ' + playerId.value.slice(-3));
           isLoggedIn.value = true;
-          if (sync && sync.registerPlayer) {
-            sync.registerPlayer(playerId.value, playerName.value, isGroupMode.value ? selectedTeamName.value : '');
+          if (sync) {
+            if (sync.switchRoom) sync.switchRoom(roomId.value);
+            if (sync.registerPlayer) {
+              sync.registerPlayer(playerId.value, playerName.value, isGroupMode.value ? selectedTeamName.value : '');
+            }
           }
         };
 
@@ -247,6 +258,9 @@
           if (sync.isFirebaseReady) {
             isFirebaseActive.value = true;
           }
+          sync.on('connection_status', ({ online }) => {
+            isFirebaseActive.value = online;
+          });
           sync.on('firebase_connected', () => {
             isFirebaseActive.value = true;
           });

@@ -3,46 +3,61 @@
  * 雙模同步引擎：支援 Firebase Realtime Database 雲端即時長連線 與 本地 BroadcastChannel / LocalStorage
  */
 
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBPsCFx3kdMRcaA0W3lPmlV8eMMuY_xTyk",
+  authDomain: "data-analysis-quiz-7b4d3.firebaseapp.com",
+  databaseURL: "https://data-analysis-quiz-7b4d3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "data-analysis-quiz-7b4d3",
+  storageBucket: "data-analysis-quiz-7b4d3.firebasestorage.app",
+  messagingSenderId: "421643705789",
+  appId: "1:421643705789:web:29062c6c9288ec5f2386d4"
+};
+
 class GameSync {
   constructor(roomId = 'DA-ROOM-888', role = 'viewer') {
     this.roomId = roomId;
     this.role = role; // 'host', 'projector', 'player'
     this.listeners = {};
-    this.channelName = `game_sync_${this.roomId}`;
     this.firebaseDb = null;
     this.isFirebaseReady = false;
     this.currentPlayerId = null;
     this.currentPlayerName = null;
     this.currentGroup = null;
 
-    // 1. 初始化本地廣播頻道 (同機分頁即時備援)
+    this._initLocalChannel();
+
+    // 自動偵測全域 FIREBASE_CONFIG 或使用預設內嵌配置
+    const config = (typeof window !== 'undefined' && window.FIREBASE_CONFIG) ? window.FIREBASE_CONFIG : DEFAULT_FIREBASE_CONFIG;
+    this.initFirebase(config);
+  }
+
+  _initLocalChannel() {
+    this.channelName = `game_sync_${this.roomId}`;
     if (typeof BroadcastChannel !== 'undefined') {
       try {
+        if (this.bc) this.bc.close();
         this.bc = new BroadcastChannel(this.channelName);
         this.bc.onmessage = (event) => {
           const { type, data } = event.data || {};
           if (type) this._trigger(type, data);
         };
       } catch (e) {
-        console.warn('[Sync] BroadcastChannel not supported', e);
+        console.warn('[Sync] BroadcastChannel error:', e);
       }
     }
 
-    // 2. 本地跨視窗 storage 事件備援
-    window.addEventListener('storage', (e) => {
-      if (e.key === `state_${this.roomId}` && e.newValue) {
-        try {
-          const payload = JSON.parse(e.newValue);
-          if (payload && payload.type) {
-            this._trigger(payload.type, payload.data);
-          }
-        } catch (err) {}
-      }
-    });
-
-    // 3. 自動偵測全域 FIREBASE_CONFIG 並初始化雲端連線
-    if (typeof window !== 'undefined' && window.FIREBASE_CONFIG) {
-      this.initFirebase(window.FIREBASE_CONFIG);
+    if (!this._storageListenerBound) {
+      window.addEventListener('storage', (e) => {
+        if (e.key === `state_${this.roomId}` && e.newValue) {
+          try {
+            const payload = JSON.parse(e.newValue);
+            if (payload && payload.type) {
+              this._trigger(payload.type, payload.data);
+            }
+          } catch (err) {}
+        }
+      });
+      this._storageListenerBound = true;
     }
   }
 
@@ -62,79 +77,101 @@ class GameSync {
         firebase.initializeApp(config);
       }
       this.firebaseDb = firebase.database();
-      this.isFirebaseReady = true;
-      console.log(`[Sync] Firebase Realtime DB 已連線 (房間: ${this.roomId}, 角色: ${this.role})`);
-      this._trigger('firebase_connected', { roomId: this.roomId });
 
-      const roomRef = this.firebaseDb.ref(`rooms/${this.roomId}`);
-
-      // (A) 監聽遊戲狀態更新 (Host 廣播，Projector 與 Player 接收)
-      roomRef.child('state').on('value', (snapshot) => {
-        const state = snapshot.val();
-        if (state) {
-          this._trigger('state_change', state);
+      // 監聽真正網路長連線狀態
+      const connectedRef = this.firebaseDb.ref('.info/connected');
+      connectedRef.on('value', (snap) => {
+        const isOnline = snap.val() === true;
+        this.isFirebaseReady = isOnline;
+        this._trigger('connection_status', { online: isOnline, roomId: this.roomId });
+        if (isOnline) {
+          console.log(`[Sync] 🟢 Firebase 已連線至雲端伺服器 (房間: ${this.roomId}, 角色: ${this.role})`);
+          this._trigger('firebase_connected', { roomId: this.roomId });
+        } else {
+          console.log('[Sync] 🟡 Firebase 目前離線中');
         }
       });
 
-      // (B) 監聽搶答結果 (Buzzer Winner)
-      roomRef.child('buzzer_winner').on('value', (snapshot) => {
-        const winner = snapshot.val();
-        if (winner) {
-          this._trigger('buzzer_hit', winner);
-        }
-      });
-
-      // (C) Host 專屬監聽：學員作答與在線名單
-      if (this.role === 'host') {
-        // 監聽個別作答提交與更新
-        roomRef.child('responses').on('child_added', (snapshot) => {
-          const answer = snapshot.val();
-          if (answer) {
-            this._trigger('submit_answer', answer);
-          }
-        });
-        roomRef.child('responses').on('child_changed', (snapshot) => {
-          const answer = snapshot.val();
-          if (answer) {
-            this._trigger('submit_answer', answer);
-          }
-        });
-
-        // 監聽所有作答批次變更（如主控台清空題目前）
-        roomRef.child('responses').on('value', (snapshot) => {
-          const allResponses = snapshot.val() || {};
-          this._trigger('responses_batch', allResponses);
-        });
-
-        // 監聽學員進房名單
-        roomRef.child('players').on('value', (snapshot) => {
-          const players = snapshot.val() || {};
-          const count = Object.keys(players).length;
-          this._trigger('players_update', { count, players });
-        });
-      }
-
-      // (D) Player 專屬：登入時註冊在線狀態
-      if (this.role === 'player') {
-        const connectedRef = this.firebaseDb.ref('.info/connected');
-        connectedRef.on('value', (snap) => {
-          if (snap.val() === true && this.currentPlayerId) {
-            const myPlayerRef = roomRef.child(`players/${this.currentPlayerId}`);
-            myPlayerRef.onDisconnect().remove();
-            myPlayerRef.update({
-              id: this.currentPlayerId,
-              name: this.currentPlayerName || '學員',
-              group: this.currentGroup || '',
-              online: true,
-              lastSeen: firebase.database.ServerValue.TIMESTAMP
-            });
-          }
-        });
-      }
+      this._bindRoomListeners();
 
     } catch (err) {
       console.error('[Sync] Firebase 初始化異常:', err);
     }
+  }
+
+  _bindRoomListeners() {
+    if (!this.firebaseDb) return;
+    const roomRef = this.firebaseDb.ref(`rooms/${this.roomId}`);
+
+    // (A) 監聽遊戲狀態更新 (Host 廣播，Projector 與 Player 接收)
+    roomRef.child('state').on('value', (snapshot) => {
+      const state = snapshot.val();
+      if (state) {
+        this._trigger('state_change', state);
+      }
+    });
+
+    // (B) 監聽搶答結果 (Buzzer Winner)
+    roomRef.child('buzzer_winner').on('value', (snapshot) => {
+      const winner = snapshot.val();
+      if (winner) {
+        this._trigger('buzzer_hit', winner);
+      }
+    });
+
+    // (C) 監聽學員進房名單與在線人數
+    roomRef.child('players').on('value', (snapshot) => {
+      const players = snapshot.val() || {};
+      const count = Object.keys(players).length;
+      this._trigger('players_update', { count, players });
+    });
+
+    // (D) Host 專屬監聽：學員作答
+    if (this.role === 'host') {
+      roomRef.child('responses').on('child_added', (snapshot) => {
+        const answer = snapshot.val();
+        if (answer) {
+          this._trigger('submit_answer', answer);
+        }
+      });
+      roomRef.child('responses').on('child_changed', (snapshot) => {
+        const answer = snapshot.val();
+        if (answer) {
+          this._trigger('submit_answer', answer);
+        }
+      });
+      roomRef.child('responses').on('value', (snapshot) => {
+        const allResponses = snapshot.val() || {};
+        this._trigger('responses_batch', allResponses);
+      });
+    }
+
+    // (E) Player 專屬：連線狀態保持
+    if (this.role === 'player') {
+      const connectedRef = this.firebaseDb.ref('.info/connected');
+      connectedRef.on('value', (snap) => {
+        if (snap.val() === true && this.currentPlayerId) {
+          const myPlayerRef = roomRef.child(`players/${this.currentPlayerId}`);
+          myPlayerRef.onDisconnect().remove();
+          myPlayerRef.update({
+            id: this.currentPlayerId,
+            name: this.currentPlayerName || '學員',
+            group: this.currentGroup || '',
+            online: true,
+            lastSeen: firebase.database.ServerValue.TIMESTAMP
+          });
+        }
+      });
+    }
+  }
+
+  // 切換房間
+  switchRoom(newRoomId) {
+    if (!newRoomId || newRoomId === this.roomId) return;
+    this.roomId = newRoomId;
+    this._initLocalChannel();
+    this._bindRoomListeners();
+    console.log(`[Sync] 已切換至新房間: ${this.roomId}`);
   }
 
   // 註冊學員身分（供在線人數統計）
@@ -142,7 +179,7 @@ class GameSync {
     this.currentPlayerId = playerId;
     this.currentPlayerName = playerName;
     this.currentGroup = group;
-    if (this.isFirebaseReady && this.firebaseDb) {
+    if (this.firebaseDb) {
       const myPlayerRef = this.firebaseDb.ref(`rooms/${this.roomId}/players/${playerId}`);
       myPlayerRef.onDisconnect().remove();
       myPlayerRef.set({
@@ -181,11 +218,11 @@ class GameSync {
       localStorage.setItem(`state_${this.roomId}`, JSON.stringify(payload));
     } catch (e) {}
 
-    // 本地立即觸發 (適用於本機同一頁面元件)
+    // 本地立即觸發
     this._trigger(type, data);
 
     // 2. 雲端 Firebase 同步寫入
-    if (this.isFirebaseReady && this.firebaseDb) {
+    if (this.firebaseDb) {
       const roomRef = this.firebaseDb.ref(`rooms/${this.roomId}`);
 
       // (A) 狀態變更 (Host -> 全體)
@@ -201,14 +238,21 @@ class GameSync {
         }
       }
 
-      // (B) 學員提交答案 (Player -> Host)
+      // (B) 儲存全場歷史紀錄到雲端
+      else if (type === 'save_history') {
+        if (data && data.roundId) {
+          roomRef.child(`history/${data.roundId}`).set(data);
+        }
+      }
+
+      // (C) 學員提交答案 (Player -> Host)
       else if (type === 'submit_answer') {
         if (data && data.playerId) {
           roomRef.child(`responses/${data.playerId}`).set(data);
         }
       }
 
-      // (C) 極速搶答 (Player -> Transaction 唯一得主判定)
+      // (D) 極速搶答 (Player -> Transaction 唯一得主判定)
       else if (type === 'buzzer_hit' || type === 'buzzer_trigger') {
         roomRef.child('buzzer_winner').transaction((current) => {
           if (current === null) {
@@ -220,8 +264,6 @@ class GameSync {
             console.error('[Sync] Buzzer transaction error:', error);
           } else if (committed) {
             console.log('[Sync] 恭喜成功搶答！', snapshot.val());
-          } else {
-            console.log('[Sync] 搶答已被搶先');
           }
         });
       }

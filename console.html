@@ -33,13 +33,19 @@
         <div>
           <div class="flex items-center space-x-2">
             <h1 class="text-lg font-bold text-white leading-tight">數據分析遊戲主控台</h1>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
-                  :class="isFirebaseActive ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/50' : 'bg-amber-950 text-amber-400 border border-amber-500/50'">
-              <span class="w-1.5 h-1.5 rounded-full mr-1.5" :class="isFirebaseActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"></span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide"
+                  :class="isFirebaseActive ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/60 shadow-sm' : 'bg-amber-950 text-amber-300 border border-amber-500/60'">
+              <span class="w-2 h-2 rounded-full mr-1.5" :class="isFirebaseActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"></span>
               {{ isFirebaseActive ? 'Firebase 雲端連線中' : '本地離線模式' }}
             </span>
           </div>
-          <p class="text-xs text-slate-400">房間代碼：<span class="font-mono text-cyan-400 font-bold">{{ roomId }}</span></p>
+          <div class="flex items-center space-x-2 text-xs text-slate-400 mt-1">
+            <span>房間代碼：</span>
+            <input v-model="roomId" @change="changeRoom" 
+                   title="可自訂或修改房間代碼"
+                   class="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-cyan-400 font-bold w-36 focus:border-cyan-400 focus:outline-none" />
+            <button @click="generateRandomRoom" class="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium">隨機換房</button>
+          </div>
         </div>
       </div>
 
@@ -59,7 +65,7 @@
 
       <!-- 快速連結與狀態 -->
       <div class="flex items-center space-x-3 text-xs">
-        <a href="projector.html" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold flex items-center space-x-1">
+        <a :href="'projector.html?room=' + roomId" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold flex items-center space-x-1">
           <span>📺 開啟投影大螢幕</span>
         </a>
         <a href="play.html" target="_blank" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 font-bold flex items-center space-x-1">
@@ -393,8 +399,21 @@
 
         const setMode = (mode) => {
           roomMode.value = mode;
-          connectedCount.value = mode === 'GROUP_REPRESENTATIVE' ? 6 : 30;
           broadcastState();
+        };
+
+        const changeRoom = () => {
+          roomId.value = roomId.value.trim().toUpperCase() || 'DA-ROOM-888';
+          if (sync && sync.switchRoom) {
+            sync.switchRoom(roomId.value);
+            broadcastState();
+          }
+        };
+
+        const generateRandomRoom = () => {
+          const rand = Math.floor(100 + Math.random() * 900);
+          roomId.value = `DA-ROOM-${rand}`;
+          changeRoom();
         };
 
         const setDuration = (sec) => {
@@ -501,17 +520,44 @@
         };
 
         const exportResultsToCSV = () => {
-          let csv = 'Timestamp,Question_ID,Module,Player_or_Team,Selected_Option,Is_Correct,Score\n';
-          const q = selectedQuestion.value;
-          Object.values(currentResponses.value).forEach(r => {
-            const isCorrect = q && r.option === q.answer ? 'YES' : 'NO';
-            const score = isCorrect === 'YES' ? (q.score || 100) : 0;
-            csv += `${new Date().toISOString()},${q ? q.id : ''},${q ? q.module : ''},"${r.playerName}",${r.option},${isCorrect},${score}\n`;
+          let csv = '\uFEFF'; // UTF-8 BOM 防止 Excel 亂碼
+          csv += `=== 數據分析實戰遊戲 戰報紀錄 ===\n`;
+          csv += `房間代碼：,${roomId.value},匯出時間：,${new Date().toLocaleString()}\n\n`;
+
+          csv += `【全場總積分排行榜】\n`;
+          csv += `名次,暱稱/組別,總積分,答對題數,總作答題數,正確率\n`;
+          leaderboard.value.forEach((item, index) => {
+            const acc = item.totalAnswers ? Math.round((item.correctCount / item.totalAnswers) * 100) + '%' : '0%';
+            csv += `${index + 1},"${item.name}",${item.score},${item.correctCount || 0},${item.totalAnswers || 0},${acc}\n`;
           });
+
+          csv += `\n【逐題作答詳細明細】\n`;
+          csv += `記錄時間,題號,模組,題目簡述,標準答案,學員/組別,選擇選項,是否答對,獲得分數\n`;
+
+          // 如果有全場歷次題目紀錄，匯出全場；否則匯出當前題目
+          const recordsToExport = gameSessionHistory.value.length > 0 ? gameSessionHistory.value : [{
+            timestamp: new Date().toISOString(),
+            questionId: selectedQuestion.value ? selectedQuestion.value.id : '',
+            module: selectedQuestion.value ? selectedQuestion.value.module : '',
+            question: selectedQuestion.value ? selectedQuestion.value.question : '',
+            answer: selectedQuestion.value ? selectedQuestion.value.answer : '',
+            scoreValue: selectedQuestion.value ? (selectedQuestion.value.score || 100) : 100,
+            responses: currentResponses.value
+          }];
+
+          recordsToExport.forEach(round => {
+            const qTitle = (round.question || '').replace(/[",\n]/g, ' ').slice(0, 30);
+            Object.values(round.responses || {}).forEach(r => {
+              const isCorrect = r.option === round.answer ? 'YES' : 'NO';
+              const score = isCorrect === 'YES' ? round.scoreValue : 0;
+              csv += `${round.timestamp},${round.questionId},${round.module},"${qTitle}",${round.answer},"${r.playerName}",${r.option},${isCorrect},${score}\n`;
+            });
+          });
+
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const link = document.createElement('a');
           link.href = URL.createObjectURL(blob);
-          link.download = `Game_Logs_${new Date().toISOString().slice(0, 10)}.csv`;
+          link.download = `DataQuest_GameReport_${roomId.value}_${new Date().toISOString().slice(0, 10)}.csv`;
           link.click();
         };
 
@@ -524,11 +570,14 @@
           if (sync.isFirebaseReady) {
             isFirebaseActive.value = true;
           }
+          sync.on('connection_status', ({ online }) => {
+            isFirebaseActive.value = online;
+          });
           sync.on('firebase_connected', () => {
             isFirebaseActive.value = true;
           });
 
-          // 監聽線上學生人數
+          // 監聽線上真實學生人數
           sync.on('players_update', ({ count }) => {
             connectedCount.value = count;
             broadcastState();
@@ -556,6 +605,9 @@
         return {
           isFirebaseActive,
           roomId,
+          changeRoom,
+          generateRandomRoom,
+          gameSessionHistory,
           roomMode,
           currentStage,
           timerDuration,
