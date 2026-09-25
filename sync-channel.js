@@ -116,15 +116,7 @@ class GameSync {
 
       this._bindRoomListeners();
 
-      // 監聽全域最新活動房間 (非 host 端可跟隨最新房間)
-      if (this.role !== 'host') {
-        this.firebaseDb.ref('system/active_room').on('value', (snap) => {
-          const val = snap.val();
-          if (val && val.roomId && val.roomId !== this.roomId) {
-            this._trigger('room_redirect', { oldRoomId: this.roomId, newRoomId: val.roomId, mode: val.mode });
-          }
-        });
-      }
+      // [v6.2] 徹底移除全域 active_room 強制跳房監聽，防止跨房間死循環震盪
 
     } catch (err) {
       console.error('[Sync] Firebase 初始化異常:', err);
@@ -143,12 +135,17 @@ class GameSync {
       }
     });
 
-    // (B) 監聽舊房間重定向訊號
+    // (B) 監聽舊房間重定向訊號（嚴格防死循環：僅限學員端、時效 15 秒內、且目標房不可為自身）
     roomRef.child('redirect').on('value', (snapshot) => {
       const redirectData = snapshot.val();
       if (redirectData && redirectData.newRoomId && redirectData.newRoomId !== this.roomId) {
-        if (this.role !== 'host') {
-          this._trigger('room_redirect', redirectData);
+        // 投影端不自動跳房，以網址房號為準；學員端僅接收15秒內有效換房訊號
+        if (this.role === 'player') {
+          const now = Date.now();
+          const ts = redirectData.timestamp || now;
+          if (Math.abs(now - ts) < 15000) {
+            this._trigger('room_redirect', redirectData);
+          }
         }
       }
     });
@@ -207,14 +204,25 @@ class GameSync {
     }
   }
 
-  // 切換房間
+  // 切換房間 (徹底解綁舊房間監聽，防止記憶體洩漏與無限事件循環)
   switchRoom(newRoomId) {
     if (!newRoomId || newRoomId === this.roomId) return;
     const oldRoomId = this.roomId;
+
+    // 1. 徹底解綁舊房間所有 Firebase 監聽器
+    if (this.firebaseDb && oldRoomId) {
+      const oldRef = this.firebaseDb.ref(`rooms/${oldRoomId}`);
+      oldRef.child('state').off();
+      oldRef.child('redirect').off();
+      oldRef.child('buzzer_winner').off();
+      oldRef.child('players').off();
+      oldRef.child('responses').off();
+    }
+
     this.roomId = newRoomId;
     this._initLocalChannels();
     this._bindRoomListeners();
-    console.log(`[Sync] 已切換至新房間: ${this.roomId} (前房間: ${oldRoomId})`);
+    console.log(`[Sync] 🟢 已安全切換至新房間: ${this.roomId} (已完全註銷前房間: ${oldRoomId} 監聽)`);
   }
 
   // 註冊學員身分（供在線人數統計）
@@ -299,18 +307,16 @@ class GameSync {
         }
       }
 
-      // (B) 房間重定向廣播 (Host -> 全體投影與學員端)
+      // (B) 房間重定向廣播 (Host -> 學員端遷移，並銷毀目標房間殘留指引，防雙向乒乓死循環)
       else if (type === 'room_redirect') {
         if (sanitizedData && sanitizedData.oldRoomId) {
+          // 清除新房間可能殘留的反向重定向
+          this.firebaseDb.ref(`rooms/${sanitizedData.newRoomId}/redirect`).remove();
           this.firebaseDb.ref(`rooms/${sanitizedData.oldRoomId}/redirect`).set({
             newRoomId: sanitizedData.newRoomId,
             timestamp: firebase.database.ServerValue.TIMESTAMP
           });
         }
-        this.firebaseDb.ref('system/active_room').set({
-          roomId: sanitizedData.newRoomId,
-          updatedAt: firebase.database.ServerValue.TIMESTAMP
-        });
       }
 
       // (C) 儲存全場歷史紀錄到雲端

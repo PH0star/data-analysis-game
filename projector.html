@@ -11,8 +11,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.1"></script>
-  <script src="sync-channel.js?v=6.1"></script>
+  <script src="firebase-config.js?v=6.2"></script>
+  <script src="sync-channel.js?v=6.2"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     
@@ -629,19 +629,7 @@
             if (state.leaderboard) leaderboardData.value = state.leaderboard;
           });
 
-          // 監聽教師主控台換房重定向指示
-          sync.on('room_redirect', ({ newRoomId, mode }) => {
-            if (newRoomId && newRoomId !== roomId.value) {
-              console.log('[Projector] 收到換房廣播:', newRoomId);
-              roomId.value = newRoomId;
-              if (mode) roomMode.value = mode;
-              sync.switchRoom(newRoomId);
-              try {
-                window.history.replaceState({}, '', `?room=${newRoomId}`);
-              } catch (e) {}
-              setTimeout(renderQrCode, 200);
-            }
-          });
+          // [v6.2] 投影端嚴格鎖定當前 URL 房號，不被重定向訊號干擾，保證畫面 100% 穩定不閃爍
 
           // 監聽大廳模式或房間變更時重新渲染 QR Code
           watch([currentStage, roomId, roomMode], ([st]) => {
@@ -650,17 +638,8 @@
             }
           });
 
-          // 讀取既有狀態快照（開場一律優先維持 LOBBY，避免卡死在舊排行榜快照）
-          const snap = sync.getStateSnapshot();
-          if (snap) {
-            if (snap.stage && snap.stage !== 'LEADERBOARD') {
-              currentStage.value = snap.stage;
-            } else {
-              currentStage.value = 'LOBBY';
-            }
-            if (snap.question) currentQuestion.value = snap.question;
-            if (snap.mode) roomMode.value = snap.mode;
-          }
+          // 開場一律乾淨就緒於 LOBBY，等待教師主控台發送即時出題與切換
+          currentStage.value = 'LOBBY';
         });
 
         onUnmounted(() => {

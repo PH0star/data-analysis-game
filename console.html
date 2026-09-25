@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.1"></script>
-  <script src="sync-channel.js?v=6.1"></script>
+  <script src="firebase-config.js?v=6.2"></script>
+  <script src="sync-channel.js?v=6.2"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -477,11 +477,16 @@
             window.history.replaceState({}, '', newUrl);
           } catch (e) {}
 
-          // 4. 重置新房間在線暫存
+          // 4. 重置新房間在線暫存並清除新房間歷史重定向殘留（徹底解除死循環）
           connectedCount.value = 0;
           currentResponses.value = {};
           buzzerWinner.value = '';
           currentStage.value = 'LOBBY';
+          if (sync && sync.firebaseDb) {
+            try {
+              sync.firebaseDb.ref(`rooms/${newRoom}/redirect`).remove();
+            } catch (e) {}
+          }
 
           // 5. 【各房間獨立記憶存檔機制】：讀取新房間歷史存檔或全新開局
           if (sync && sync.loadRoomData) {
@@ -736,6 +741,12 @@
         onMounted(async () => {
           await loadQuestions();
           sync = new GameSync(roomId.value, 'host');
+          if (sync && sync.firebaseDb) {
+            try {
+              // 銷毀當前房間可能殘留的重定向指針，解鎖全場卡死
+              sync.firebaseDb.ref(`rooms/${roomId.value}/redirect`).remove();
+            } catch (e) {}
+          }
 
           // 自動嘗試恢復當前房間既有存檔
           if (sync && sync.loadRoomData) {
