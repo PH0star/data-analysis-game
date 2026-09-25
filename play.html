@@ -9,8 +9,8 @@
   <!-- Firebase SDK (v9 compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=6.5"></script>
-  <script src="sync-channel.js?v=6.5"></script>
+  <script src="firebase-config.js?v=6.6"></script>
+  <script src="sync-channel.js?v=6.6"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
     body {
@@ -193,8 +193,10 @@
               選項 {{ currentAnswer }}
             </span>
           </div>
-          <div v-if="isMyAnswerCorrect" class="text-xs text-emerald-400 font-bold pt-1 border-t border-slate-800/80">
-            +{{ currentPoints || 100 }} 分 已加入您的累計總分！
+          <div v-if="isMyAnswerCorrect" class="text-xs sm:text-sm text-emerald-300 font-bold pt-2 border-t border-slate-800/80 flex items-center justify-center space-x-1">
+            <span>+</span>
+            <span class="text-base sm:text-lg font-black font-mono text-emerald-400">{{ currentPoints || 100 }}</span>
+            <span>分 已加入您的累計總分！</span>
           </div>
         </div>
 

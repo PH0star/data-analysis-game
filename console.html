@@ -283,11 +283,12 @@
               <span>截止 & 投影選情</span>
             </button>
 
-            <!-- 動作 3: 揭曉答案與解析 -->
+            <!-- 動作 3: 揭曉答案與解析 (動態狀態辨識) -->
             <button @click="revealAnswer" 
-                    class="p-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1">
-              <span class="text-lg">💡</span>
-              <span>揭曉答案與計分</span>
+                    class="p-3 rounded-xl font-bold text-xs shadow-lg flex flex-col items-center justify-center space-y-1 transition-all"
+                    :class="hasCurrentRoundBeenScored ? 'bg-emerald-900/70 border border-emerald-500/50 text-emerald-300' : 'bg-emerald-700 hover:bg-emerald-600 text-white'">
+              <span class="text-lg">{{ hasCurrentRoundBeenScored ? '✓' : '💡' }}</span>
+              <span>{{ hasCurrentRoundBeenScored ? '已計分 (切換解析)' : '揭曉答案與計分' }}</span>
             </button>
 
             <!-- 動作 4: 投影排行榜 (支援開關切換) -->
@@ -339,7 +340,12 @@
         const roomInput = ref(initialRoom);
         const roomMode = ref('INDIVIDUAL'); // 'INDIVIDUAL' or 'GROUP_REPRESENTATIVE'
         const currentStage = ref('LOBBY');
-        const hasScoredThisQuestion = ref(false); // 防重複計分鎖
+        // 每題專屬 Round Token 與已結算集合（雙重保險防重複計分）
+        const activeRoundToken = ref('');
+        const completedRoundTokens = ref(new Set());
+        const hasCurrentRoundBeenScored = computed(() => {
+          return !!activeRoundToken.value && completedRoundTokens.value.has(activeRoundToken.value);
+        });
         const timerDuration = ref(30);
         const timeLeft = ref(30);
         let timerInterval = null;
@@ -490,7 +496,6 @@
 
         const selectQuestion = (q) => {
           selectedQuestion.value = q;
-          hasScoredThisQuestion.value = false;
         };
 
         const pickRandomQuestion = () => {
@@ -630,7 +635,8 @@
           if (!selectedQuestion.value) return;
           currentResponses.value = {};
           buzzerWinner.value = '';
-          hasScoredThisQuestion.value = false; // 新題目解鎖，允許計分一次
+          // 為本次出題生成全域唯一 Round Token
+          activeRoundToken.value = `R_${selectedQuestion.value.id}_${Date.now()}`;
 
           if (selectedQuestion.value.question_type === 'speed_buzzer') {
             currentStage.value = 'BUZZER_ALERT';
@@ -649,21 +655,40 @@
           broadcastState();
         };
 
-        // 揭曉答案並即時計算學員/小組得分（防重複累加鎖：每題保證僅計分一次！）
+        // 揭曉答案並即時計算學員/小組得分（三重防重複鎖：Round Token + 姓名去重 + 作答旗標，保證絕不重複計分！）
         const revealAnswer = () => {
           currentStage.value = 'REVEAL';
 
-          // 嚴格檢查：若本道題目已經結算過，絕不重複累計積分與答題次數！
-          if (!hasScoredThisQuestion.value && selectedQuestion.value) {
-            hasScoredThisQuestion.value = true;
+          const currentToken = activeRoundToken.value;
+          // 鎖 1: 若未曾派題、或本輪題目已加入結算集合，直接廣播展示畫面，嚴禁二次計分
+          if (!currentToken || completedRoundTokens.value.has(currentToken)) {
+            console.log('[Host] 該題目回合已結算過，維持現狀不重複累計積分');
+            broadcastState();
+            return;
+          }
+
+          if (selectedQuestion.value) {
+            completedRoundTokens.value.add(currentToken);
             const correctAns = (selectedQuestion.value.answer || '').trim();
             const pts = parseInt(selectedQuestion.value.score, 10) || 100;
 
-            Object.values(currentResponses.value).forEach(r => {
+            // 鎖 2: 同姓名作答去重（防止同一學員重整、多開分頁送出多筆作答導致單題多次加分）
+            const uniquePlayerResponses = {};
+            Object.values(currentResponses.value || {}).forEach(r => {
+              const normName = (r.playerName || '').trim();
+              if (normName) {
+                uniquePlayerResponses[normName] = r;
+              }
+            });
+
+            // 鎖 3: 逐筆紀錄檢查 scored 旗標
+            Object.values(uniquePlayerResponses).forEach(r => {
+              if (r.scored) return; // 該作答紀錄已加分過
+              r.scored = true;
+
               const isCorrect = (r.option || '').trim().toUpperCase() === correctAns.toUpperCase();
 
               if (roomMode.value === 'GROUP_REPRESENTATIVE') {
-                // 小組代表模式：純數值計分（絕不發生字串拼接補0）
                 const team = groupScores.value[r.playerName];
                 if (team) {
                   team.totalAnswers = Number(team.totalAnswers || 0) + 1;
@@ -673,7 +698,6 @@
                   }
                 }
               } else {
-                // 個人競賽模式：依姓名合併記分，保證重登斷線不分裂
                 const p = findOrCreateIndividualEntry(r.playerId, r.playerName);
                 p.totalAnswers = Number(p.totalAnswers || 0) + 1;
                 if (isCorrect) {
@@ -686,7 +710,7 @@
             // 儲存本題歷史數據紀錄
             const q = selectedQuestion.value;
             const roundRecord = {
-              roundId: `${q.id}_${Date.now()}`,
+              roundId: currentToken,
               timestamp: new Date().toISOString(),
               questionId: q.id,
               module: q.module,
@@ -694,22 +718,19 @@
               question: q.question,
               answer: q.answer,
               scoreValue: pts,
-              responses: JSON.parse(JSON.stringify(currentResponses.value)),
+              responses: JSON.parse(JSON.stringify(uniquePlayerResponses)),
               buzzerWinner: buzzerWinner.value || ''
             };
             gameSessionHistory.value.push(roundRecord);
             if (sync && sync.emit) {
               sync.emit('save_history', roundRecord);
-              // 同步將該房間最新獨立積分存檔持久化至 Firebase 與本地
               sync.emit('save_scores', {
                 individualScores: individualScores.value,
                 groupScores: groupScores.value,
                 updatedAt: Date.now()
               });
             }
-            console.log(`[Host] 題目 #${q.id} 結算完成，積分已更新（防重複計分鎖已啟動）`);
-          } else {
-            console.log('[Host] 題目已結算過，維持當前分數不重複累計');
+            console.log(`[Host] 題目 #${q.id} (Token: ${currentToken}) 結算完成，積分已入帳！`);
           }
 
           broadcastState();
@@ -739,7 +760,6 @@
         };
 
         const resetToLobby = () => {
-          hasScoredThisQuestion.value = false;
           if (timerInterval) clearInterval(timerInterval);
           currentStage.value = 'LOBBY';
           broadcastState();
@@ -865,7 +885,7 @@
           gameSessionHistory,
           roomMode,
           currentStage,
-          hasScoredThisQuestion,
+          hasCurrentRoundBeenScored,
           timerDuration,
           timeLeft,
           allQuestions,
