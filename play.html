@@ -6,7 +6,10 @@
   <title>學員作答端 (Student Client)</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
+  <!-- Firebase SDK (v9 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="sync-channel.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -43,7 +46,7 @@
         </div>
         <div>
           <div class="text-sm font-bold text-white">{{ playerName || '尚未登入' }}</div>
-          <div class="text-[10px] text-slate-400 font-mono flex items-center space-x-1"><span>房號：{{ roomId }}</span><span :class="isCloudOnline ? 'text-emerald-400' : 'text-amber-400 animate-pulse'">● {{ isCloudOnline ? '在線' : '連線中' }}</span></div>
+          <div class="text-[10px] text-slate-400 font-mono">房號：{{ roomId }}</div>
         </div>
       </div>
       <div class="text-right">
@@ -64,17 +67,14 @@
           </p>
         </div>
 
-        <!-- 小組代表模式快速選擇 (依教師設定動態生成第 1 ~ N 組) -->
+        <!-- 小組代表模式快速選擇 (C 方案) -->
         <div v-if="isGroupMode" class="space-y-2">
-          <div class="flex items-center justify-between">
-            <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
-            <span class="text-[11px] font-mono text-cyan-400 font-bold">共 {{ groupCount }} 組</span>
-          </div>
-          <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1">
-            <button v-for="g in availableTeams" :key="g"
+          <label class="text-xs text-slate-400 block">請選擇組別（由組長代表連線）：</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button v-for="g in ['第 1 組', '第 2 組', '第 3 組', '第 4 組', '第 5 組', '第 6 組']" :key="g"
                     @click="selectTeam(g)"
-                    class="p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-95"
-                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
+                    class="p-3 rounded-xl border text-xs font-bold transition-all"
+                    :class="selectedTeamName === g ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'">
               {{ g }}
             </button>
           </div>
@@ -107,20 +107,13 @@
       <!-- 階段 2: 搶答題專屬按鈕 (BUZZER_ALERT) -->
       <div v-else-if="currentStage === 'BUZZER_ALERT'" class="flex flex-col items-center justify-center space-y-6 py-6">
         <div class="text-xs font-bold text-amber-300 uppercase tracking-widest animate-pulse">
-          ⚡ 請看前方大螢幕題目，準備搶答！
+          ⚡ 倒數中！準備搶答
         </div>
         <button @click="hitBuzzer"
-                class="buzzer-circle w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-black text-3xl shadow-2xl flex flex-col items-center justify-center border-4 border-red-400 tap-btn cursor-pointer active:scale-95">
+                class="buzzer-circle w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-black text-2xl shadow-2xl flex flex-col items-center justify-center border-4 border-red-400 tap-btn">
           <span>搶！</span>
-          <span class="text-xs font-normal opacity-80 mt-1 font-mono">BUZZER</span>
+          <span class="text-xs font-normal opacity-80 mt-1">BUZZER</span>
         </button>
-      </div>
-
-      <!-- 階段 2-2: 其他人得標時的等待畫面 -->
-      <div v-else-if="currentStage === 'BUZZER_WINNER' && !canAnswer" class="text-center space-y-4 py-8">
-        <div class="text-5xl">⏳</div>
-        <h3 class="text-xl font-bold text-white">已由 <span class="text-amber-400 font-black">【{{ buzzerWinner }}】</span> 搶得作答權</h3>
-        <p class="text-xs text-slate-400">請看前方大螢幕，等待該組作答與公佈答案！</p>
       </div>
 
       <!-- 階段 3: 答題進行中 (QUESTION_ACTIVE 或 搶答得標者) -->
@@ -177,7 +170,7 @@
 
     <!-- 底部狀態列 -->
     <footer class="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/80">
-      數據分析實戰線上遊戲 • 手機作答端 (v3.2-最終穩定版)
+      數據分析實戰線上遊戲 • 手機作答端
     </footer>
 
   </div>
@@ -187,19 +180,12 @@
 
     createApp({
       setup() {
-        const roomId = ref('DA-ROOM-888');
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = ref(urlParams.get('room') || 'DA-ROOM-888');
+        const isFirebaseActive = ref(false);
         const isLoggedIn = ref(false);
         const inputName = ref('');
         const selectedTeamName = ref('第 1 組');
-        const groupCount = ref(6);
-        const availableTeams = computed(() => {
-          const teams = [];
-          const n = groupCount.value || 6;
-          for (let i = 1; i <= n; i++) {
-            teams.push(`第 ${i} 組`);
-          }
-          return teams;
-        });
         const playerName = ref('');
         const playerId = ref('P_' + Math.random().toString(36).substring(2, 8));
         const myScore = ref(0);
@@ -210,8 +196,6 @@
         const currentPoints = ref(100);
         const buzzerWinner = ref('');
         const submittedOption = ref('');
-        const activeQuestionId = ref('');
-        const scoredQuestions = ref({});
 
         let sync;
 
@@ -234,9 +218,8 @@
         const doLogin = () => {
           playerName.value = isGroupMode.value ? selectedTeamName.value : (inputName.value.trim() || '學員 ' + playerId.value.slice(-3));
           isLoggedIn.value = true;
-          if (sync) {
-            sync.emit('player_join', { id: playerId.value, name: playerName.value });
-            sync.emit('request_sync', { playerId: playerId.value });
+          if (sync && sync.registerPlayer) {
+            sync.registerPlayer(playerId.value, playerName.value, isGroupMode.value ? selectedTeamName.value : '');
           }
         };
 
@@ -258,56 +241,41 @@
           });
         };
 
-        const isCloudOnline = ref(false);
-
         onMounted(() => {
           sync = new GameSync(roomId.value, 'player');
 
-          sync.on('cloud_status', (st) => {
-            isCloudOnline.value = st.online;
-            if (st.online) {
-              sync.emit('request_sync', { playerId: playerId.value });
-            }
+          if (sync.isFirebaseReady) {
+            isFirebaseActive.value = true;
+          }
+          sync.on('firebase_connected', () => {
+            isFirebaseActive.value = true;
           });
 
           sync.on('state_change', (state) => {
             if (!state) return;
-
-            // 1. 同步題目資訊：僅在題目 ID 真正改變時才重置作答選項！
-            if (state.question) {
-              const newQId = state.question.id;
-              if (newQId !== activeQuestionId.value) {
-                activeQuestionId.value = newQId;
-                submittedOption.value = ''; // 核心修復：只有換新題目時才重置，絕不被定期心跳清空！
+            if (state.stage) {
+              // 新題目開始時重置作答選項
+              if (state.stage === 'QUESTION_ACTIVE' || state.stage === 'BUZZER_ALERT') {
+                submittedOption.value = '';
               }
+              currentStage.value = state.stage;
+            }
+            if (state.mode) roomMode.value = state.mode;
+            if (state.question) {
               currentAnswer.value = state.question.answer;
               currentPoints.value = state.question.score || 100;
             }
-
-            if (state.stage) {
-              currentStage.value = state.stage;
-            }
-
-            if (state.mode) roomMode.value = state.mode;
-            if (state.groupCount) groupCount.value = state.groupCount;
             if (state.buzzerWinner) buzzerWinner.value = state.buzzerWinner;
 
-            // 2. 分數權威同步：直接同步教師端權威計算的分數，並設單次加分防呆
-            if (state.scores && playerName.value && state.scores[playerName.value] !== undefined) {
-              myScore.value = state.scores[playerName.value];
-            } else if (state.stage === 'REVEAL' && activeQuestionId.value) {
-              // 本地備援結算：每道題 ID 嚴格限加分一次，絕不重複累加！
-              if (!scoredQuestions.value[activeQuestionId.value]) {
-                if (submittedOption.value && submittedOption.value === currentAnswer.value) {
-                  myScore.value += currentPoints.value;
-                }
-                scoredQuestions.value[activeQuestionId.value] = true;
-              }
+            // 結算加分
+            if (state.stage === 'REVEAL' && submittedOption.value && submittedOption.value === currentAnswer.value) {
+              myScore.value += currentPoints.value;
             }
           });
         });
 
         return {
+          isFirebaseActive,
           roomId,
           isLoggedIn,
           inputName,
@@ -315,8 +283,6 @@
           playerName,
           myScore,
           isGroupMode,
-          groupCount,
-          availableTeams,
           currentStage,
           currentAnswer,
           submittedOption,
@@ -325,8 +291,7 @@
           selectTeam,
           doLogin,
           chooseOption,
-          hitBuzzer,
-          isCloudOnline
+          hitBuzzer
         };
       }
     }).mount('#app');
