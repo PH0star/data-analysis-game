@@ -300,9 +300,14 @@
 
           <!-- 次要操作列 -->
           <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-xs text-slate-400">
-            <button @click="resetToLobby" class="hover:text-white underline">
-              ↺ 回到大廳等待頁面
-            </button>
+            <div class="flex items-center space-x-4">
+              <button @click="resetToLobby" class="hover:text-white underline font-medium">
+                ↺ 回到大廳等待頁面
+              </button>
+              <button @click="resetLeaderboard" class="text-rose-400 hover:text-rose-300 underline font-medium">
+                🔄 積分重置歸零
+              </button>
+            </div>
             <button @click="exportResultsToCSV" class="text-cyan-400 hover:text-cyan-300 font-bold flex items-center space-x-1">
               <span>📥 匯出當前作答成 CSV / 試算表</span>
             </button>
@@ -340,15 +345,38 @@
         const isFirebaseActive = ref(false);
         const gameSessionHistory = ref([]);
 
-        // 假資料積分榜
-        const leaderboard = ref([
-          { name: '第 1 組', score: 450 },
-          { name: '第 3 組', score: 400 },
-          { name: '第 5 組', score: 350 },
-          { name: '第 2 組', score: 300 },
-          { name: '第 4 組', score: 250 },
-          { name: '第 6 組', score: 200 }
-        ]);
+        // 真實動態積分榜（個人模式與小組模式獨立儲存）
+        const individualScores = ref({});
+        const groupScores = ref({
+          '第 1 組': { name: '第 1 組', score: 0, correctCount: 0, totalAnswers: 0 },
+          '第 2 組': { name: '第 2 組', score: 0, correctCount: 0, totalAnswers: 0 },
+          '第 3 組': { name: '第 3 組', score: 0, correctCount: 0, totalAnswers: 0 },
+          '第 4 組': { name: '第 4 組', score: 0, correctCount: 0, totalAnswers: 0 },
+          '第 5 組': { name: '第 5 組', score: 0, correctCount: 0, totalAnswers: 0 },
+          '第 6 組': { name: '第 6 組', score: 0, correctCount: 0, totalAnswers: 0 }
+        });
+
+        // 依目前模式即時計算排序排行榜
+        const leaderboard = computed(() => {
+          const scoreMap = roomMode.value === 'GROUP_REPRESENTATIVE' ? groupScores.value : individualScores.value;
+          const list = Object.values(scoreMap);
+          return list.sort((a, b) => b.score - a.score || b.correctCount - a.correctCount);
+        });
+
+        const resetLeaderboard = () => {
+          if (confirm('確定要將目前全場積分重置歸零嗎？')) {
+            individualScores.value = {};
+            groupScores.value = {
+              '第 1 組': { name: '第 1 組', score: 0, correctCount: 0, totalAnswers: 0 },
+              '第 2 組': { name: '第 2 組', score: 0, correctCount: 0, totalAnswers: 0 },
+              '第 3 組': { name: '第 3 組', score: 0, correctCount: 0, totalAnswers: 0 },
+              '第 4 組': { name: '第 4 組', score: 0, correctCount: 0, totalAnswers: 0 },
+              '第 5 組': { name: '第 5 組', score: 0, correctCount: 0, totalAnswers: 0 },
+              '第 6 組': { name: '第 6 組', score: 0, correctCount: 0, totalAnswers: 0 }
+            };
+            broadcastState();
+          }
+        };
 
         let sync;
 
@@ -518,20 +546,68 @@
           broadcastState();
         };
 
-        // 揭曉答案
+        // 揭曉答案並即時計算學員/小組得分
         const revealAnswer = () => {
           currentStage.value = 'REVEAL';
-          // 計算積分更新
+
           if (selectedQuestion.value) {
             const correctAns = selectedQuestion.value.answer;
             const pts = selectedQuestion.value.score || 100;
+
             Object.values(currentResponses.value).forEach(r => {
-              if (r.option === correctAns) {
-                const target = leaderboard.value.find(p => p.name === r.playerName);
-                if (target) target.score += pts;
+              const isCorrect = (r.option === correctAns);
+
+              if (roomMode.value === 'GROUP_REPRESENTATIVE') {
+                // 小組代表模式：計分給該組別
+                const team = groupScores.value[r.playerName];
+                if (team) {
+                  team.totalAnswers++;
+                  if (isCorrect) {
+                    team.score += pts;
+                    team.correctCount++;
+                  }
+                }
+              } else {
+                // 個人競賽模式：計分給該學員
+                const pId = r.playerId || r.playerName;
+                if (!individualScores.value[pId]) {
+                  individualScores.value[pId] = {
+                    id: pId,
+                    name: r.playerName || '學員',
+                    score: 0,
+                    correctCount: 0,
+                    totalAnswers: 0
+                  };
+                }
+                const p = individualScores.value[pId];
+                p.totalAnswers++;
+                if (isCorrect) {
+                  p.score += pts;
+                  p.correctCount++;
+                }
               }
             });
+
+            // 儲存本題歷史數據紀錄
+            const q = selectedQuestion.value;
+            const roundRecord = {
+              roundId: `${q.id}_${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              questionId: q.id,
+              module: q.module,
+              subcategory: q.subcategory || '',
+              question: q.question,
+              answer: q.answer,
+              scoreValue: pts,
+              responses: JSON.parse(JSON.stringify(currentResponses.value)),
+              buzzerWinner: buzzerWinner.value || ''
+            };
+            gameSessionHistory.value.push(roundRecord);
+            if (sync && sync.emit) {
+              sync.emit('save_history', roundRecord);
+            }
           }
+
           broadcastState();
         };
 
@@ -603,15 +679,40 @@
             isFirebaseActive.value = true;
           });
 
-          // 監聽線上真實學生人數
-          sync.on('players_update', ({ count }) => {
+          // 監聽線上真實學生人數並自動登錄至個人名冊
+          sync.on('players_update', ({ count, players }) => {
             connectedCount.value = count;
+            if (roomMode.value === 'INDIVIDUAL' && players) {
+              Object.values(players).forEach(p => {
+                if (p && p.id && !individualScores.value[p.id]) {
+                  individualScores.value[p.id] = {
+                    id: p.id,
+                    name: p.name || '學員',
+                    score: 0,
+                    correctCount: 0,
+                    totalAnswers: 0
+                  };
+                }
+              });
+            }
             broadcastState();
           });
 
-          // 監聽學生端作答
+          // 監聽學生端作答並自動建檔
           sync.on('submit_answer', (answerData) => {
             currentResponses.value[answerData.playerId] = answerData;
+            if (roomMode.value === 'INDIVIDUAL') {
+              const pId = answerData.playerId;
+              if (!individualScores.value[pId]) {
+                individualScores.value[pId] = {
+                  id: pId,
+                  name: answerData.playerName || '學員',
+                  score: 0,
+                  correctCount: 0,
+                  totalAnswers: 0
+                };
+              }
+            }
             broadcastState();
           });
 
@@ -630,6 +731,7 @@
 
         return {
           isFirebaseActive,
+          resetLeaderboard,
           roomId,
           roomInput,
           changeRoom,
